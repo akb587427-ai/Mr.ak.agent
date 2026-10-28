@@ -5,7 +5,7 @@ import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { store, saveConfig, log, clearHistory } from './store.js';
-import { PROVIDERS, resolveLlm, chatCompletion } from './llm.js';
+import { PROVIDERS, resolveLlm, chatCompletion, listModels, detectProviderFromKey } from './llm.js';
 import { startWhatsApp, wa, requestPairing, cancelPairing } from './whatsapp.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -53,10 +53,35 @@ app.post('/api/config', (req, res) => {
   }
   if (typeof b.apiKey === 'string' && b.apiKey.trim()) c.apiKey = b.apiKey.trim();
   if (b.clearApiKey === true) c.apiKey = '';
+
+  // Fill missing provider details from the key so a pasted Groq/OpenAI key works
+  // even when the provider dropdown was left on "custom".
+  const preset = PROVIDERS[c.provider];
+  const needsBaseUrl = !c.baseUrl && !preset?.baseUrl;
+  const needsModel = !c.model && !preset?.defaultModel;
+  if (c.apiKey && (needsBaseUrl || needsModel)) {
+    const detected = detectProviderFromKey(c.apiKey);
+    if (detected) {
+      const dp = PROVIDERS[detected];
+      c.provider = detected;
+      if (needsBaseUrl) c.baseUrl = dp.baseUrl || '';
+      if (needsModel) c.model = dp.defaultModel || '';
+    }
+  }
+
   saveConfig();
   log('info', 'Settings updated');
   broadcast();
   res.json({ ok: true, config: publicConfig() });
+});
+
+app.post('/api/models', async (_req, res) => {
+  try {
+    const result = await listModels(store.config);
+    res.json({ ok: true, ...result });
+  } catch (e) {
+    res.status(400).json({ ok: false, error: e.message });
+  }
 });
 
 app.post('/api/test-llm', async (_req, res) => {

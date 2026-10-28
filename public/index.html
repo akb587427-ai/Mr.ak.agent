@@ -58,7 +58,11 @@
     <p class="hint" id="keyHelp"></p>
 
     <label>Model</label>
-    <input id="model" type="text" placeholder="model name" />
+    <div class="row tight">
+      <input id="model" type="text" placeholder="model name" list="modelList" />
+      <button id="loadModelsBtn" class="ghost" type="button">Load models</button>
+    </div>
+    <datalist id="modelList"></datalist>
 
     <label>Base URL <span class="hint">(only for custom)</span></label>
     <input id="baseUrl" type="text" placeholder="https://..." />

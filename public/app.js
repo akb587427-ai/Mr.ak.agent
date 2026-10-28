@@ -155,6 +155,38 @@ $('provider').addEventListener('change', () => {
   updateKeyHelp();
 });
 
+$('loadModelsBtn').addEventListener('click', async () => {
+  const msg = $('cfgMsg');
+  msg.className = 'msg';
+  msg.textContent = 'Loading models…';
+  // Save current settings first so the server can use the key you just typed.
+  const key = $('apiKey').value.trim();
+  const body = {
+    provider: $('provider').value,
+    model: $('model').value,
+    baseUrl: $('baseUrl').value,
+  };
+  if (key) body.apiKey = key;
+  await post('/api/config', body);
+  if (key) $('apiKey').value = '';
+  const r = await post('/api/models');
+  if (!r.ok) {
+    msg.className = 'msg err';
+    msg.textContent = r.error || 'Could not load models.';
+    return;
+  }
+  const list = $('modelList');
+  list.innerHTML = (r.models || []).map((m) => `<option value="${escapeHtml(m)}"></option>`).join('');
+  if (r.models?.length) {
+    if (!$('model').value) $('model').value = r.models[0];
+    msg.className = 'msg ok';
+    msg.textContent = `Found ${r.models.length} models. Click the model box to choose one.`;
+  } else {
+    msg.className = 'msg err';
+    msg.textContent = 'No models returned by the provider.';
+  }
+});
+
 $('saveBtn').addEventListener('click', async () => {
   const msg = $('cfgMsg');
   msg.className = 'msg';

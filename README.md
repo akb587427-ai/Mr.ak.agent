@@ -7,7 +7,9 @@ that answers your incoming WhatsApp messages.
 
 - Links WhatsApp by QR code or by an 8-character pairing code (phone number entry).
 - Answers direct messages with an LLM of your choice (Groq, OpenAI, OpenRouter,
-  Together, DeepSeek, or any OpenAI-compatible endpoint).
+  Together, DeepSeek, or any OpenAI-compatible endpoint). The provider is filled in
+  automatically from the API key, so a pasted key works even if the dropdown was left
+  on Custom.
 - Gives the agent two tools: `web_search` (Wikipedia + DuckDuckGo instant answers)
   and `current_time`.
 - Keeps short per-chat memory and shows a live activity log.
@@ -38,7 +40,7 @@ Open the web page, then:
 | --- | --- |
 | Provider | Which LLM service to call. `custom` accepts any OpenAI-compatible base URL. |
 | API key | Your own LLM key. Stored in `data/config.json` on this machine. |
-| Model | Model name. Defaults are filled per provider. |
+| Model | Model name. Defaults are filled per provider, or press Load models to pick from the list. |
 | Base URL | Only needed for `custom`. |
 | System prompt | The agent's instructions. |
 | Trigger prefix | Optional. If set, the agent only replies to messages that start with it. |

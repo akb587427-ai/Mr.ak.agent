@@ -168,6 +168,10 @@ async function handleMessage(sock, msg) {
   if (!jid || jid === 'status@broadcast') return;
   if (isJidGroup(jid) && !store.config.respondToGroups) return;
 
+  // Newer WhatsApp accounts address chats by a "@lid" id. Send the reply back to the
+  // phone-number jid when it is available, so the customer actually receives it.
+  const replyJid = jid.endsWith('@lid') && msg.key.remoteJidAlt ? msg.key.remoteJidAlt : jid;
+
   const type = getContentType(msg.message);
   if (type !== 'conversation' && type !== 'extendedTextMessage') return;
   const text =
@@ -185,12 +189,14 @@ async function handleMessage(sock, msg) {
   log('info', `Incoming from ${jid}: ${content.slice(0, 80)}`);
   try {
     const reply = await respond(jid, content);
-    await sock.sendPresenceUpdate('composing', jid).catch(() => {});
+    await sock.sendPresenceUpdate('composing', replyJid).catch(() => {});
     await delay(300);
-    await sock.sendMessage(jid, { text: reply }, { quoted: msg });
-    log('info', `Replied to ${jid}`);
+    await sock.sendMessage(replyJid, { text: reply }, { quoted: msg });
+    log('info', `Replied to ${replyJid}`);
   } catch (e) {
     log('error', 'Failed to reply', e.message);
-    await sock.sendMessage(jid, { text: `Agent error: ${e.message}` }).catch(() => {});
+    const friendly =
+      'Sorry, the assistant is not set up correctly right now. Please try again later.';
+    await sock.sendMessage(replyJid, { text: friendly }, { quoted: msg }).catch(() => {});
   }
 }
