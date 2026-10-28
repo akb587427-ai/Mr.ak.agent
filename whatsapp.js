@@ -27,9 +27,11 @@ export const wa = {
   lastError: null,
   sock: null,
   reconnectAttempts: 0,
+  pairing: { requested: false, number: null, code: null, error: null },
 };
 
 let starting = false;
+let pendingPairingNumber = null;
 
 export function startWhatsApp() {
   if (starting) return;
@@ -39,6 +41,50 @@ export function startWhatsApp() {
     .finally(() => {
       starting = false;
     });
+}
+
+// Link without a QR code: WhatsApp shows the code on the phone after the user
+// enters their number under "Link with phone number instead".
+export function requestPairing(phoneNumber) {
+  if (wa.status === 'connected') throw new Error('Already connected. Log out first to link another number.');
+  const digits = String(phoneNumber || '').replace(/\D/g, '');
+  if (digits.length < 8 || digits.length > 15) {
+    throw new Error('Enter the full international number without "+", e.g. 923001234567');
+  }
+  pendingPairingNumber = digits;
+  wa.pairing = { requested: true, number: digits, code: null, error: null };
+  wa.qrDataUrl = null;
+  wa.status = 'pairing';
+  log('info', `Pairing code requested for ${digits}`);
+  setTimeout(tryRequestPairing, 400);
+  return wa.pairing;
+}
+
+export function cancelPairing() {
+  pendingPairingNumber = null;
+  wa.pairing = { requested: false, number: null, code: null, error: null };
+  if (wa.status === 'pairing') wa.status = 'starting';
+  log('info', 'Pairing cancelled — switching back to QR');
+  return wa.pairing;
+}
+
+async function tryRequestPairing() {
+  if (!pendingPairingNumber || !wa.sock || wa.pairing.code) return;
+  try {
+    const code = await wa.sock.requestPairingCode(pendingPairingNumber);
+    wa.pairing.code = code;
+    wa.pairing.error = null;
+    wa.status = 'pairing';
+    log('info', `Pairing code ready: ${code}`);
+  } catch (e) {
+    // The socket may still be connecting; the next QR tick will retry.
+    if (/connection|closed|not open|timed out/i.test(e.message)) {
+      log('info', 'Socket not ready for pairing yet, will retry');
+      return;
+    }
+    wa.pairing.error = e.message;
+    log('error', 'Pairing code request failed', e.message);
+  }
 }
 
 async function connect() {
@@ -61,12 +107,16 @@ async function connect() {
   sock.ev.on('connection.update', async (update) => {
     const { connection, lastDisconnect, qr } = update;
     if (qr) {
-      try {
-        wa.qrDataUrl = await QRCode.toDataURL(qr, { margin: 1, width: 340 });
-        wa.status = 'qr';
-        log('info', 'QR ready — scan it from WhatsApp > Linked devices');
-      } catch (e) {
-        log('error', 'QR generation failed', e.message);
+      if (pendingPairingNumber) {
+        await tryRequestPairing();
+      } else {
+        try {
+          wa.qrDataUrl = await QRCode.toDataURL(qr, { margin: 1, width: 340 });
+          wa.status = 'qr';
+          log('info', 'QR ready — scan it from WhatsApp > Linked devices');
+        } catch (e) {
+          log('error', 'QR generation failed', e.message);
+        }
       }
     }
     if (connection === 'open') {
@@ -74,6 +124,8 @@ async function connect() {
       wa.qrDataUrl = null;
       wa.lastError = null;
       wa.reconnectAttempts = 0;
+      pendingPairingNumber = null;
+      wa.pairing = { requested: false, number: null, code: null, error: null };
       wa.me = sock.user ? jidNormalizedUser(sock.user.id) : null;
       log('info', `WhatsApp connected as ${wa.me}`);
     }
@@ -83,11 +135,17 @@ async function connect() {
       wa.status = loggedOut ? 'logged_out' : 'reconnecting';
       wa.qrDataUrl = null;
       wa.lastError = lastDisconnect?.error?.message || `code ${code}`;
+      if (wa.pairing.requested && !loggedOut) {
+        wa.pairing.code = null;
+        pendingPairingNumber = wa.pairing.number;
+      }
       log('warn', `Connection closed (code ${code})`);
       if (loggedOut) {
         fs.rmSync(AUTH_DIR, { recursive: true, force: true });
         fs.mkdirSync(AUTH_DIR, { recursive: true });
         wa.reconnectAttempts = 0;
+        pendingPairingNumber = null;
+        wa.pairing = { requested: false, number: null, code: null, error: null };
         setTimeout(startWhatsApp, 1500);
       } else {
         wa.reconnectAttempts++;

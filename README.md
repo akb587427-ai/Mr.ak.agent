@@ -5,7 +5,7 @@ that answers your incoming WhatsApp messages.
 
 ## What it does
 
-- Pairs with WhatsApp by scanning a QR code (WhatsApp Web multi-device).
+- Links WhatsApp by QR code or by an 8-character pairing code (phone number entry).
 - Answers direct messages with an LLM of your choice (Groq, OpenAI, OpenRouter,
   Together, DeepSeek, or any OpenAI-compatible endpoint).
 - Gives the agent two tools: `web_search` (Wikipedia + DuckDuckGo instant answers)
@@ -21,8 +21,13 @@ npm start          # listens on http://0.0.0.0:12000
 
 Open the web page, then:
 
-1. Scan the QR code: WhatsApp on your phone -> Settings -> Linked devices ->
-   Link a device.
+1. Link your WhatsApp in one of two ways:
+   - **QR code**: WhatsApp on your phone -> Settings -> Linked devices -> Link a
+     device, then scan the QR shown on the page.
+   - **Pairing code**: open "Link with phone number instead" on the page, enter your
+     number with country code (no `+`, e.g. `923001234567`), press Get code, then on
+     your phone go to Linked devices -> Link a device -> Link with phone number
+     instead and type the 8-character code.
 2. Pick a provider, paste your LLM API key, set a model, and press Save.
    Press Test AI to confirm the key works.
 3. Send a WhatsApp message to the linked number from another phone.

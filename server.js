@@ -6,7 +6,7 @@ import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { store, saveConfig, log, clearHistory } from './store.js';
 import { PROVIDERS, resolveLlm, chatCompletion } from './llm.js';
-import { startWhatsApp, wa } from './whatsapp.js';
+import { startWhatsApp, wa, requestPairing, cancelPairing } from './whatsapp.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT || 12000);
@@ -27,7 +27,13 @@ function publicConfig() {
 
 function state() {
   return {
-    wa: { status: wa.status, me: wa.me, lastError: wa.lastError, qr: wa.qrDataUrl },
+    wa: {
+      status: wa.status,
+      me: wa.me,
+      lastError: wa.lastError,
+      qr: wa.qrDataUrl,
+      pairing: wa.pairing,
+    },
     config: publicConfig(),
     providers: PROVIDERS,
     logs: store.logs.slice(-80).reverse(),
@@ -66,6 +72,22 @@ app.post('/api/test-llm', async (_req, res) => {
   }
 });
 
+app.post('/api/pair', (req, res) => {
+  try {
+    const pairing = requestPairing(req.body?.number);
+    broadcast();
+    res.json({ ok: true, pairing });
+  } catch (e) {
+    res.status(400).json({ ok: false, error: e.message });
+  }
+});
+
+app.post('/api/pair/cancel', (_req, res) => {
+  const pairing = cancelPairing();
+  broadcast();
+  res.json({ ok: true, pairing });
+});
+
 app.post('/api/restart', (_req, res) => {
   log('info', 'Restarting WhatsApp connection');
   try {
@@ -84,6 +106,7 @@ app.post('/api/logout', (_req, res) => {
   } catch {}
   fs.rmSync(AUTH_DIR, { recursive: true, force: true });
   fs.mkdirSync(AUTH_DIR, { recursive: true });
+  cancelPairing();
   wa.status = 'starting';
   wa.me = null;
   wa.qrDataUrl = null;

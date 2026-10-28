@@ -27,6 +27,25 @@
       <button id="logoutBtn" class="danger">Log out</button>
     </div>
     <p id="waMsg" class="msg"></p>
+
+    <details id="pairDetails" class="pair">
+      <summary>Link with phone number instead (pairing code)</summary>
+      <p class="hint">
+        Enter your WhatsApp number with country code and no “+”. Then on your phone open
+        WhatsApp → <b>Linked devices</b> → <b>Link a device</b> → <b>Link with phone number instead</b>
+        and type the code shown below.
+      </p>
+      <div class="row">
+        <input id="pairNumber" type="tel" inputmode="numeric" placeholder="e.g. 923001234567" />
+        <button id="pairBtn">Get code</button>
+      </div>
+      <div id="pairBox" class="pairbox" hidden>
+        <div id="pairCode" class="paircode">— — — — — — — —</div>
+        <div id="pairNote" class="hint"></div>
+        <button id="cancelPairBtn" class="ghost">Cancel and use QR</button>
+      </div>
+      <p id="pairMsg" class="msg"></p>
+    </details>
   </section>
 
   <section class="card">

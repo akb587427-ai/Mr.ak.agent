@@ -9,6 +9,7 @@ function setStatus(status, me) {
   const map = {
     connected: ['ok', me ? `connected · ${me.split('@')[0]}` : 'connected'],
     qr: ['warn', 'waiting for scan'],
+    pairing: ['warn', 'pairing code mode'],
     starting: ['', 'starting…'],
     reconnecting: ['warn', 'reconnecting…'],
     logged_out: ['err', 'logged out'],
@@ -24,6 +25,10 @@ function renderQr(wa) {
     box.innerHTML = `<div class="connected-badge"><div style="font-size:40px">✅</div><div>WhatsApp connected</div><div class="hint">${wa.me || ''}</div></div>`;
     return;
   }
+  if (wa.status === 'pairing' && wa.pairing?.code) {
+    box.innerHTML = `<div class="connected-badge"><div style="font-size:40px">🔢</div><div>Pairing mode</div><div class="hint">Enter the code shown below on your phone</div></div>`;
+    return;
+  }
   if (wa.qr) {
     box.innerHTML = `<img alt="WhatsApp QR code" src="${wa.qr}" />`;
     return;
@@ -32,6 +37,35 @@ function renderQr(wa) {
     ? 'Logged out. Press “Refresh QR” to link again.'
     : 'Starting WhatsApp… the QR code will appear here in a few seconds.';
   box.innerHTML = `<div class="placeholder">${msg}</div>`;
+}
+
+function renderPairing(wa) {
+  const p = wa.pairing || {};
+  const box = $('pairBox');
+  const codeEl = $('pairCode');
+  const noteEl = $('pairNote');
+  const msg = $('pairMsg');
+  if (p.requested) {
+    $('pairDetails').open = true;
+    box.hidden = false;
+    codeEl.textContent = p.code ? p.code : '• • • • • • • •';
+    noteEl.textContent = p.code
+      ? 'On your phone: WhatsApp → Linked devices → Link a device → Link with phone number instead.'
+      : 'Requesting a code from WhatsApp…';
+    if (p.error) {
+      msg.className = 'msg err';
+      msg.textContent = p.error;
+    } else if (p.code) {
+      msg.className = 'msg ok';
+      msg.textContent = `Code requested for ${p.number}.`;
+    } else {
+      msg.className = 'msg';
+      msg.textContent = 'Please wait…';
+    }
+  } else {
+    box.hidden = true;
+    codeEl.textContent = '— — — — — — — —';
+  }
 }
 
 function fillProviders() {
@@ -85,6 +119,7 @@ function applyState(data) {
   if (!$('provider').options.length) fillProviders();
   setStatus(data.wa.status, data.wa.me);
   renderQr(data.wa);
+  renderPairing(data.wa);
   applyConfig(data.config);
   renderLogs(data.logs || []);
   $('waMsg').textContent = data.wa.lastError && data.wa.status !== 'connected' ? data.wa.lastError : '';
@@ -159,6 +194,30 @@ $('testBtn').addEventListener('click', async () => {
     msg.className = 'msg err';
     msg.textContent = r.error || 'Test failed.';
   }
+});
+
+$('pairBtn').addEventListener('click', async () => {
+  const msg = $('pairMsg');
+  const number = $('pairNumber').value.trim();
+  msg.className = 'msg';
+  if (!number) {
+    msg.className = 'msg err';
+    msg.textContent = 'Enter your WhatsApp number first.';
+    return;
+  }
+  msg.textContent = 'Requesting code…';
+  const r = await post('/api/pair', { number });
+  if (!r.ok) {
+    msg.className = 'msg err';
+    msg.textContent = r.error || 'Could not request a pairing code.';
+  }
+});
+
+$('cancelPairBtn').addEventListener('click', async () => {
+  await post('/api/pair/cancel');
+  const msg = $('pairMsg');
+  msg.className = 'msg';
+  msg.textContent = 'Switched back to QR. Press “Refresh QR” if no code appears.';
 });
 
 $('restartBtn').addEventListener('click', () => post('/api/restart'));

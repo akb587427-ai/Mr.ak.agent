@@ -89,6 +89,20 @@ button.danger { background: transparent; color: var(--danger); border: 1px solid
 .qrbox img { width: 300px; height: 300px; image-rendering: pixelated; border-radius: 10px; background: #fff; padding: 8px; }
 .placeholder { color: var(--muted); font-size: 14px; text-align: center; }
 .connected-badge { display: flex; flex-direction: column; align-items: center; gap: 8px; color: var(--accent); font-weight: 600; }
+.pair { margin-top: 16px; border-top: 1px solid var(--line); padding-top: 12px; }
+.pair summary { cursor: pointer; font-size: 13px; color: var(--accent2); font-weight: 600; }
+.pair summary::marker { color: var(--muted); }
+.pair .row { margin-top: 12px; }
+.pairbox {
+  margin-top: 14px; padding: 16px; border-radius: 12px; text-align: center;
+  background: #0d171d; border: 1px solid var(--line);
+}
+.paircode {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 30px; font-weight: 700; letter-spacing: 6px; color: var(--accent);
+  margin-bottom: 10px; word-break: break-word;
+}
+.pairbox .hint { margin-bottom: 12px; display: block; }
 .logs {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px;
   max-height: 320px; overflow: auto; background: #0d171d; border-radius: 10px; padding: 10px;
