@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>WhatsApp AI Agent</title>
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+<header>
+  <div class="brand">
+    <span class="dot"></span>
+    <h1>WhatsApp AI Agent</h1>
+  </div>
+  <div id="status" class="status">connecting…</div>
+</header>
+
+<main>
+  <section class="card" id="connectCard">
+    <h2>1. Connect WhatsApp</h2>
+    <p class="hint">Open WhatsApp on your phone → <b>Settings → Linked devices → Link a device</b>, then scan this QR.</p>
+    <div id="qrBox" class="qrbox">
+      <div class="placeholder">Starting WhatsApp…</div>
+    </div>
+    <div class="row">
+      <button id="restartBtn" class="ghost">Refresh QR</button>
+      <button id="logoutBtn" class="danger">Log out</button>
+    </div>
+    <p id="waMsg" class="msg"></p>
+  </section>
+
+  <section class="card">
+    <h2>2. AI settings</h2>
+    <label>Provider</label>
+    <select id="provider"></select>
+
+    <label>API key <span id="keyHint" class="hint"></span></label>
+    <input id="apiKey" type="password" placeholder="paste your LLM API key" autocomplete="off" />
+    <p class="hint" id="keyHelp"></p>
+
+    <label>Model</label>
+    <input id="model" type="text" placeholder="model name" />
+
+    <label>Base URL <span class="hint">(only for custom)</span></label>
+    <input id="baseUrl" type="text" placeholder="https://..." />
+
+    <label>System prompt</label>
+    <textarea id="systemPrompt" rows="4"></textarea>
+
+    <label>Trigger prefix <span class="hint">(optional, e.g. "!" — leave empty to reply to every message)</span></label>
+    <input id="triggerPrefix" type="text" placeholder="" />
+
+    <div class="row wrap">
+      <label class="check"><input id="enabled" type="checkbox" /> Agent enabled</label>
+      <label class="check"><input id="respondToGroups" type="checkbox" /> Reply in groups</label>
+    </div>
+
+    <div class="row">
+      <button id="saveBtn">Save settings</button>
+      <button id="testBtn" class="ghost">Test AI</button>
+      <button id="clearHistoryBtn" class="ghost">Clear chat memory</button>
+    </div>
+    <p id="cfgMsg" class="msg"></p>
+  </section>
+
+  <section class="card">
+    <h2>3. Activity log</h2>
+    <div id="logs" class="logs"></div>
+  </section>
+</main>
+
+<script src="app.js"></script>
+</body>
+</html>
