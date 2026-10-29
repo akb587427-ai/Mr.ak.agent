@@ -10,6 +10,15 @@ import { startWhatsApp, wa, requestPairing, cancelPairing } from './whatsapp.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT || 12000);
+
+// Keep the process alive through transient network or Baileys errors, otherwise a
+// single stray rejection would take the whole web app down.
+process.on('uncaughtException', (e) => {
+  log('error', 'uncaughtException', e?.stack || e?.message || String(e));
+});
+process.on('unhandledRejection', (e) => {
+  log('error', 'unhandledRejection', e?.stack || e?.message || String(e));
+});
 const app = express();
 app.use(express.json({ limit: '1mb' }));
 app.use(express.static(path.join(__dirname, 'public')));

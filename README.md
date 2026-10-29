@@ -21,6 +21,14 @@ npm install
 npm start          # listens on http://0.0.0.0:12000
 ```
 
+Keep it alive across crashes and restarts:
+
+```bash
+bash ensure-running.sh   # starts it if not already running (safe to call anytime)
+```
+
+Logs are written to `logs/server.log`.
+
 Open the web page, then:
 
 1. Link your WhatsApp in one of two ways:
