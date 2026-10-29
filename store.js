@@ -33,6 +33,8 @@ export function defaultConfig() {
     triggerPrefix: '',
     // Reply to a voice note with a voice note.
     voiceReplies: true,
+    // Voice used for spoken replies and call greetings (a male voice by default).
+    ttsVoice: 'Charon',
     // What to do when someone calls the number. Baileys cannot carry call audio, so
     // the call is rejected and the agent follows up on chat instead.
     calls: {

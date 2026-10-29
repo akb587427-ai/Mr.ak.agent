@@ -75,6 +75,12 @@ function fillProviders() {
     .join('');
 }
 
+function fillVoices(voices) {
+  const sel = $('ttsVoice');
+  sel.innerHTML = voices.map((v) => `<option value="${v.id}">${v.label}</option>`).join('');
+  sel.value = 'Charon';
+}
+
 function applyConfig(cfg) {
   if (!initialized) {
     $('provider').value = cfg.provider;
@@ -90,6 +96,9 @@ function applyConfig(cfg) {
     $('callsMode').value = cfg.calls?.mode || 'voice';
     $('callsNotifyOwner').checked = cfg.calls?.notifyOwner !== false;
     $('callsGreeting').value = cfg.calls?.greeting || '';
+    if (cfg.ttsVoice && [...$('ttsVoice').options].some((o) => o.value === cfg.ttsVoice)) {
+      $('ttsVoice').value = cfg.ttsVoice;
+    }
     initialized = true;
   }
   $('keyHint').textContent = cfg.hasKey
@@ -178,6 +187,7 @@ async function loadLeads() {
 function applyState(data) {
   providers = data.providers || {};
   if (!$('provider').options.length) fillProviders();
+  if (data.voices && !$('ttsVoice').options.length) fillVoices(data.voices);
   setStatus(data.wa.status, data.wa.me);
   renderQr(data.wa);
   renderPairing(data.wa);
@@ -279,6 +289,7 @@ $('saveBtn').addEventListener('click', async () => {
     enabled: $('enabled').checked,
     respondToGroups: $('respondToGroups').checked,
     voiceReplies: $('voiceReplies').checked,
+    ttsVoice: $('ttsVoice').value,
     calls: {
       mode: $('callsMode').value,
       notifyOwner: $('callsNotifyOwner').checked,
@@ -357,13 +368,20 @@ $('testVoiceBtn').addEventListener('click', async () => {
   const msg = $('cfgMsg');
   msg.className = 'msg';
   msg.textContent = 'Generating voice… (a few seconds)';
+  // Save the chosen voice and call settings first so the sample uses them.
   await post('/api/config', {
+    ttsVoice: $('ttsVoice').value,
+    voiceReplies: $('voiceReplies').checked,
     calls: { mode: $('callsMode').value, notifyOwner: $('callsNotifyOwner').checked, greeting: $('callsGreeting').value },
   });
-  const r = await post('/api/test-voice');
+  const owner = $('ownerNumber').value.trim();
+  if (owner) await post('/api/config', { ownerNumber: owner });
+  const r = await post('/api/test-voice', { send: true });
   if (r.ok) {
     msg.className = 'msg ok';
-    msg.textContent = `Voice reply works — ${(r.bytes / 1024).toFixed(0)} KB OGG generated in ${(r.ms / 1000).toFixed(1)}s.`;
+    msg.textContent = r.sent
+      ? `Voice sample sent to your WhatsApp — ${(r.bytes / 1024).toFixed(0)} KB in ${(r.ms / 1000).toFixed(1)}s.`
+      : `Voice works (${(r.bytes / 1024).toFixed(0)} KB), but WhatsApp is not connected so nothing was sent.`;
   } else {
     msg.className = 'msg err';
     msg.textContent = r.error || 'Voice test failed.';

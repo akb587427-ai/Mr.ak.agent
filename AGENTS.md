@@ -159,3 +159,21 @@ PCM, `ffmpeg` re-wraps it as OGG/Opus, and it is sent with `{ audio, mimetype:
 **Config:** `voiceReplies` (bool) and `calls: { mode, notifyOwner, greeting }`, editable
 from the dashboard "Calls" section. `POST /api/test-voice` generates a note and, with
 `send: true`, delivers it to the owner's DM to prove it renders.
+
+### Voice update (male voice + model rotation)
+
+- **Male voice by default.** `ttsVoice` (default `Charon`, a deep male Gemini voice).
+  Other male voices: `Puck`, `Orus`, `Iapetus`, `Fenrir`. Female options remain
+  (`Kore`, `Aoede`, `Leda`, `Zephyr`). The OpenAI path uses `onyx` (male). Selectable
+  from the dashboard Calls section; `GET /api/state` returns the `voices` list.
+- **Speech model rotation.** Gemini's free tier meters speech quota *per model per
+  day*, so one exhausted model used to kill all voice. `voice.js` now walks
+  `gemini-3.8-flash-tts`, `gemini-3.8-flash-lite-tts`, `gemini-3.1-flash-tts-preview`,
+  `gemini-2.5-flash-preview-tts` on 429/503, mirroring the chat-model rotation.
+- **Voice notes are transcribed and answered in kind** (voice in, voice out), including
+  the first-contact welcome. Transcription may come back in Devanagari or Urdu script
+  depending on the speaker, which is fine — the reply is generated in the language the
+  customer used.
+- **Key note:** the dashboard's "N keys" figure is the number of *endpoints* (models),
+  not API keys. The current box has a single Gemini key, so per-model rotation is what
+  provides headroom.

@@ -14,8 +14,35 @@ import { splitKeys } from './llm.js';
 const execFileAsync = promisify(execFile);
 
 const GEMINI_BASE = 'https://generativelanguage.googleapis.com/v1beta';
-const TTS_MODEL = process.env.TTS_MODEL || 'gemini-2.5-flash-preview-tts';
-const TTS_VOICE = process.env.TTS_VOICE || 'Kore';
+// Gemini's free tier counts speech quota per model per day, so a single exhausted
+// model would silence the agent. Rotating across the speech models keeps the voice
+// working, the same way the chat models are rotated in llm.js.
+const TTS_MODELS = [
+  process.env.TTS_MODEL,
+  'gemini-3.8-flash-tts',
+  'gemini-3.8-flash-lite-tts',
+  'gemini-3.1-flash-tts-preview',
+  'gemini-2.5-flash-preview-tts',
+].filter(Boolean);
+// Curated Gemini prebuilt voices. "Charon" is a deep male voice and is the default so
+// the assistant sounds like a male representative out of the box.
+export const VOICES = [
+  { id: 'Charon', label: 'Charon — male, deep and calm' },
+  { id: 'Puck', label: 'Puck — male, upbeat' },
+  { id: 'Orus', label: 'Orus — male, firm' },
+  { id: 'Iapetus', label: 'Iapetus — male, clear' },
+  { id: 'Fenrir', label: 'Fenrir — male, strong' },
+  { id: 'Kore', label: 'Kore — female, neutral' },
+  { id: 'Aoede', label: 'Aoede — female, light' },
+  { id: 'Leda', label: 'Leda — female, youthful' },
+  { id: 'Zephyr', label: 'Zephyr — female, bright' },
+];
+const DEFAULT_VOICE = 'Charon';
+
+function selectedVoice() {
+  const v = store.config.ttsVoice || process.env.TTS_VOICE || DEFAULT_VOICE;
+  return VOICES.some((x) => x.id === v) ? v : DEFAULT_VOICE;
+}
 // WhatsApp itself caps a voice note at 16 minutes; staying well under keeps replies
 // quick and the upload small.
 const MAX_TTS_CHARS = 1200;
@@ -53,8 +80,38 @@ async function geminiGenerate(model, body, key) {
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(body),
   });
-  if (!res.ok) throw new Error(`Gemini ${res.status}: ${(await res.text()).slice(0, 200)}`);
+  if (!res.ok) {
+    const text = (await res.text()).slice(0, 300);
+    const err = new Error(`Gemini ${res.status}: ${text}`);
+    // A 429 on one key is normal on the free tier; the caller rotates to the next.
+    err.rateLimited = res.status === 429;
+    err.status = res.status;
+    throw err;
+  }
   return res.json();
+}
+
+// Speech calls share the same pool of keys as the chat model. Walking the keys means
+// one exhausted free-tier key no longer silences the agent's voice.
+async function withKeys(fn) {
+  const keys = splitKeys(store.config.apiKey);
+  if (!keys.length) throw new Error('No API key configured');
+  let lastError = null;
+  for (const key of keys) {
+    try {
+      return await fn(key);
+    } catch (e) {
+      lastError = e;
+      if (e.status === 429 || e.rateLimited) {
+        log('warn', 'Voice key rate limited, trying the next key');
+        continue;
+      }
+      // A 400 usually means the model rejected this voice or payload; rotating will
+      // not help, so fail fast.
+      throw e;
+    }
+  }
+  throw lastError || new Error('All API keys are rate limited right now.');
 }
 
 function joinText(data) {
@@ -106,9 +163,8 @@ async function transcribeOpenAI(buffer, mime, key) {
 }
 
 export async function transcribeAudio(buffer, mime) {
-  const key = firstKey();
-  if (!key) throw new Error('No API key configured');
-  return isGemini() ? transcribeGemini(buffer, mime, key) : transcribeOpenAI(buffer, mime, key);
+  if (!splitKeys(store.config.apiKey).length) throw new Error('No API key configured');
+  return isGemini() ? withKeys((key) => transcribeGemini(buffer, mime, key)) : transcribeOpenAI(buffer, mime, firstKey());
 }
 
 // --- text to speech ---------------------------------------------------------
@@ -129,36 +185,53 @@ async function pcmToVoiceNote(pcm, rate) {
 }
 
 async function synthesizeGemini(text, key) {
-  const data = await geminiGenerate(TTS_MODEL, {
-    contents: [{ parts: [{ text }] }],
-    generationConfig: {
-      responseModalities: ['AUDIO'],
-      speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: TTS_VOICE } } },
-    },
-  }, key);
-  const part = (data?.candidates?.[0]?.content?.parts || []).find((p) => p.inlineData);
-  if (!part) throw new Error('TTS returned no audio');
-  const rate = Number((/rate=(\d+)/.exec(part.inlineData.mimeType || '') || [])[1] || 24000);
-  return pcmToVoiceNote(Buffer.from(part.inlineData.data, 'base64'), rate);
+  let lastError = null;
+  for (const model of TTS_MODELS) {
+    try {
+      const data = await geminiGenerate(model, {
+        contents: [{ parts: [{ text }] }],
+        generationConfig: {
+          responseModalities: ['AUDIO'],
+          speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: selectedVoice() } } },
+        },
+      }, key);
+      const part = (data?.candidates?.[0]?.content?.parts || []).find((p) => p.inlineData);
+      if (!part) throw new Error('TTS returned no audio');
+      const rate = Number((/rate=(\d+)/.exec(part.inlineData.mimeType || '') || [])[1] || 24000);
+      if (model !== TTS_MODELS[0]) log('info', `Voice generated with ${model}`);
+      return pcmToVoiceNote(Buffer.from(part.inlineData.data, 'base64'), rate);
+    } catch (e) {
+      lastError = e;
+      // Only a quota or overload failure is worth another model; a bad voice name or
+      // malformed request would fail the same way everywhere.
+      if (e.status === 429 || e.status === 503) {
+        log('warn', `TTS model ${model} unavailable (${e.status}), trying the next`);
+        continue;
+      }
+      throw e;
+    }
+  }
+  throw lastError || new Error('All speech models are unavailable right now.');
 }
 
 async function synthesizeOpenAI(text, key) {
   const base = (store.config.baseUrl || 'https://api.openai.com/v1').replace(/\/$/, '');
+  // "onyx" is the deep male voice on OpenAI's speech endpoint.
+  const voice = process.env.TTS_OPENAI_VOICE || 'onyx';
   const res = await fetch(`${base}/audio/speech`, {
     method: 'POST',
     headers: { authorization: `Bearer ${key}`, 'content-type': 'application/json' },
-    body: JSON.stringify({ model: process.env.TTS_OPENAI_MODEL || 'tts-1', voice: 'alloy', input: text, response_format: 'opus' }),
+    body: JSON.stringify({ model: process.env.TTS_OPENAI_MODEL || 'tts-1', voice, input: text, response_format: 'opus' }),
   });
   if (!res.ok) throw new Error(`TTS ${res.status}: ${(await res.text()).slice(0, 200)}`);
   return Buffer.from(await res.arrayBuffer());
 }
 
 export async function synthesizeSpeech(text) {
-  const key = firstKey();
-  if (!key) throw new Error('No API key configured');
+  if (!splitKeys(store.config.apiKey).length) throw new Error('No API key configured');
   const clean = String(text || '').replace(/\s+/g, ' ').trim().slice(0, MAX_TTS_CHARS);
   if (!clean) throw new Error('Nothing to speak');
-  return isGemini() ? synthesizeGemini(clean, key) : synthesizeOpenAI(clean, key);
+  return isGemini() ? withKeys((key) => synthesizeGemini(clean, key)) : synthesizeOpenAI(clean, firstKey());
 }
 
 export function ffmpegAvailable() {

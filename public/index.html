@@ -95,10 +95,12 @@
       <option value="voice">Reject + send a spoken voice note</option>
     </select>
     <label class="check"><input id="callsNotifyOwner" type="checkbox" /> DM me when a customer calls</label>
+    <label>Voice <span class="hint">(male by default — used for spoken replies and call greetings)</span></label>
+    <select id="ttsVoice"></select>
     <label>Call greeting <span class="hint">(optional — what the agent says when a call comes in)</span></label>
     <textarea id="callsGreeting" rows="3" placeholder="Leave empty to use the default greeting"></textarea>
     <div class="row">
-      <button id="testVoiceBtn" class="ghost" type="button">Test voice reply</button>
+      <button id="testVoiceBtn" class="ghost" type="button">Send voice sample to my WhatsApp</button>
       <span id="callStatus" class="hint"></span>
     </div>
 

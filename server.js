@@ -8,7 +8,7 @@ import { store, saveConfig, log, clearHistory } from './store.js';
 import { PROVIDERS, resolveEndpoints, chatCompletion, listModels, detectProviderFromKey, splitKeys, endpointSummary } from './llm.js';
 import { startWhatsApp, wa, requestPairing, cancelPairing } from './whatsapp.js';
 import { callStats } from './calls.js';
-import { synthesizeSpeech, voiceReady, ffmpegAvailable } from './voice.js';
+import { synthesizeSpeech, voiceReady, ffmpegAvailable, VOICES } from './voice.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT || 12000);
@@ -51,6 +51,7 @@ function state() {
     config: publicConfig(),
     providers: PROVIDERS,
     calls: { ...callStats, ffmpeg: ffmpegAvailable(), voiceReady: voiceReady() },
+    voices: VOICES,
     logs: store.logs.slice(-80).reverse(),
   };
 }
@@ -124,7 +125,7 @@ app.post('/api/test-voice', async (req, res) => {
 app.post('/api/config', (req, res) => {
   const b = req.body || {};
   const c = store.config;
-  for (const k of ['provider', 'model', 'baseUrl', 'systemPrompt', 'triggerPrefix', 'knowledge', 'ownerNumber']) {
+  for (const k of ['provider', 'model', 'baseUrl', 'systemPrompt', 'triggerPrefix', 'knowledge', 'ownerNumber', 'ttsVoice']) {
     if (typeof b[k] === 'string') c[k] = b[k].trim();
   }
   for (const k of ['enabled', 'respondToGroups', 'voiceReplies']) {

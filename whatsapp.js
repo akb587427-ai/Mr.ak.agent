@@ -245,6 +245,23 @@ async function resolvePhoneJid(sock, lid) {
   }
 }
 
+// Sends the agent's answer, as a voice note when the customer spoke and voice replies
+// are on. Falls back to text if synthesis fails, so an answer always goes out.
+// Returns true when a voice note was sent.
+async function sendReply(sock, { replyJid, replyText, quoted, asVoice }) {
+  if (asVoice && voiceRepliesEnabled() && ffmpegAvailable()) {
+    try {
+      const audio = await synthesizeSpeech(replyText);
+      await sock.sendMessage(replyJid, { audio, mimetype: 'audio/ogg; codecs=opus', ptt: true }, quoted ? { quoted } : undefined);
+      return true;
+    } catch (e) {
+      log('warn', 'Voice reply failed, sending text instead', e.message);
+    }
+  }
+  await sock.sendMessage(replyJid, { text: replyText }, quoted ? { quoted } : undefined);
+  return false;
+}
+
 async function handleMessage(sock, msg) {
   if (!msg.message || msg.key.fromMe) return;
   const jid = msg.key.remoteJid;
@@ -304,9 +321,10 @@ async function handleMessage(sock, msg) {
     await sock.sendPresenceUpdate('composing', replyJid).catch(() => {});
 
     // A brand-new customer who just says hello gets the polished welcome, so the
-    // first impression is always professional and consistent.
+    // first impression is always professional and consistent. Transcription often
+    // returns the greeting in Urdu script, so match both.
     const firstContact = getHistory(contactJid).length === 0;
-    const greetingOnly = /^(as?alam|assalam|salam|aoa|hi|hey|hello|helo|hy|good\s*(morning|evening|afternoon)|kya haal|kaise ho)[\s!.,?]*$/i.test(
+    const greetingOnly = /^(as?alam|assalam|salam|aoa|hi|hey|hello|helo|hy|good\s*(morning|evening|afternoon)|kya haal|kaise ho|السلام[^]*?|سلام|وعلیکم)[\s!.,?]*$/i.test(
       content,
     );
     if (firstContact && greetingOnly) {
@@ -314,8 +332,8 @@ async function handleMessage(sock, msg) {
       appendHistory(contactJid, 'user', content);
       appendHistory(contactJid, 'assistant', text);
       await delay(300);
-      await sock.sendMessage(replyJid, { text }, { quoted: msg });
-      log('info', `Welcomed new customer ${replyJid}`);
+      await sendReply(sock, { replyJid, replyText: text, quoted: msg, asVoice: wasVoice });
+      log('info', `Welcomed new customer ${replyJid}${wasVoice ? ' (voice)' : ''}`);
       return;
     }
 
@@ -323,19 +341,8 @@ async function handleMessage(sock, msg) {
     await delay(300);
     // Answer a voice note with a voice note. Falls back to text if speech synthesis
     // fails, so the customer always gets an answer.
-    const sendVoice = wasVoice && voiceRepliesEnabled() && ffmpegAvailable();
-    if (sendVoice) {
-      try {
-        const audio = await synthesizeSpeech(reply);
-        await sock.sendMessage(replyJid, { audio, mimetype: 'audio/ogg; codecs=opus', ptt: true }, { quoted: msg });
-        log('info', `Replied to ${replyJid} with a voice note`);
-        return;
-      } catch (e) {
-        log('warn', 'Voice reply failed, sending text instead', e.message);
-      }
-    }
-    await sock.sendMessage(replyJid, { text: reply }, { quoted: msg });
-    log('info', `Replied to ${replyJid}`);
+    const spoke = await sendReply(sock, { replyJid, replyText: reply, quoted: msg, asVoice: wasVoice });
+    log('info', `Replied to ${replyJid}${spoke ? ' with a voice note' : ''}`);
   } catch (e) {
     log('error', 'Failed to reply', e.message);
     // A rate limit is temporary, not a setup problem. Wait out the window and try
