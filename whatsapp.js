@@ -13,7 +13,7 @@ import QRCode from 'qrcode';
 import pino from 'pino';
 import path from 'path';
 import fs from 'fs';
-import { store, log } from './store.js';
+import { store, log, getHistory, appendHistory } from './store.js';
 import { respond } from './agent.js';
 
 const AUTH_DIR = process.env.AUTH_DIR || path.join(process.cwd(), 'data', 'auth');
@@ -32,6 +32,57 @@ export const wa = {
 
 let starting = false;
 let pendingPairingNumber = null;
+
+// Send a WhatsApp DM to the owner (Arslan) so he can pick up the lead himself.
+export async function notifyOwner({ customer, reason }) {
+  const owner = String(store.config.ownerNumber || '').replace(/\D/g, '');
+  if (!owner) {
+    log('warn', 'No owner number set — lead alert not sent. Add one in AI settings.');
+    return false;
+  }
+  if (!wa.sock || wa.status !== 'connected') {
+    log('warn', 'WhatsApp not connected — owner alert not sent.');
+    return false;
+  }
+  const c = customer || {};
+  const lines = [
+    '🔔 New customer enquiry',
+    '',
+    c.name ? `Name: ${c.name}` : null,
+    c.businessName ? `Business: ${c.businessName}` : null,
+    c.businessType ? `Type: ${c.businessType}` : null,
+    c.city ? `City: ${c.city}` : null,
+    c.product ? `Wants: ${c.product}` : null,
+    c.budget ? `Budget: ${c.budget}` : null,
+    c.timeline ? `Timeline: ${c.timeline}` : null,
+    reason ? `Reason: ${reason}` : null,
+    '',
+    c.jid ? `Chat: ${c.jid.split('@')[0]}` : null,
+    'Reply to this customer directly on WhatsApp.',
+  ].filter((l) => l !== null);
+  try {
+    await wa.sock.sendMessage(`${owner}@s.whatsapp.net`, { text: lines.join('\n') });
+    log('info', `Owner alerted about ${c.name || c.jid || 'a customer'}`);
+    return true;
+  } catch (e) {
+    log('error', 'Owner alert failed', e.message);
+    return false;
+  }
+}
+
+// The first reply to a brand-new customer is generated from this fixed, polished
+// template so it always looks professional and on-brand.
+function welcomeText() {
+  return [
+    'Assalam o Alaikum and welcome to TECH ARSLAN SOFTWARE SOLUTIONS! 👋',
+    '',
+    'I am the official assistant for Arslan Akram and our team. We build business software for pharmacies, laboratories, hospitals, schools, restaurants, hotels, and retail businesses.',
+    '',
+    'To point you to the right solution, may I ask: what kind of business do you run, and what would you like the software to do for you?',
+    '',
+    'You can also tell me your city, and I will arrange a free live demo on WhatsApp with our team.',
+  ].join('\n');
+}
 
 export function startWhatsApp() {
   if (starting) return;
@@ -190,8 +241,25 @@ async function handleMessage(sock, msg) {
 
   log('info', `Incoming from ${jid}: ${content.slice(0, 80)}`);
   try {
-    const reply = await respond(jid, content);
     await sock.sendPresenceUpdate('composing', replyJid).catch(() => {});
+
+    // A brand-new customer who just says hello gets the polished welcome, so the
+    // first impression is always professional and consistent.
+    const firstContact = getHistory(jid).length === 0;
+    const greetingOnly = /^(as?alam|assalam|salam|aoa|hi|hey|hello|helo|hy|good\s*(morning|evening|afternoon)|kya haal|kaise ho)[\s!.,?]*$/i.test(
+      content,
+    );
+    if (firstContact && greetingOnly) {
+      const text = welcomeText();
+      appendHistory(jid, 'user', content);
+      appendHistory(jid, 'assistant', text);
+      await delay(300);
+      await sock.sendMessage(replyJid, { text }, { quoted: msg });
+      log('info', `Welcomed new customer ${replyJid}`);
+      return;
+    }
+
+    const { reply } = await respond(jid, content, { notifyOwner });
     await delay(300);
     await sock.sendMessage(replyJid, { text: reply }, { quoted: msg });
     log('info', `Replied to ${replyJid}`);

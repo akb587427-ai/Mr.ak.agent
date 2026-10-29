@@ -82,6 +82,9 @@ button.ghost { background: var(--panel2); color: var(--text); border: 1px solid 
 button.small { padding: 2px 8px; font-size: 12px; }
 button.danger { background: transparent; color: var(--danger); border: 1px solid #5c1d24; }
 .hint { font-size: 12px; color: var(--muted); text-transform: none; letter-spacing: 0; }
+.badge { display: inline-block; font-size: 11px; padding: 1px 7px; border-radius: 10px; background: var(--accent); color: #06210f; font-weight: 600; }
+.kv { display: flex; gap: 8px; font-size: 12px; margin-top: 3px; color: var(--muted); }
+.kv span { min-width: 62px; color: var(--muted); opacity: .75; }
 .msg { font-size: 13px; min-height: 18px; margin: 10px 0 0; }
 .msg.ok { color: var(--accent); }
 .msg.err { color: var(--danger); }

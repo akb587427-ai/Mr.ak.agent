@@ -81,6 +81,7 @@ function applyConfig(cfg) {
     $('model').value = cfg.model || '';
     $('baseUrl').value = cfg.baseUrl || '';
     $('systemPrompt').value = cfg.systemPrompt || '';
+    $('ownerNumber').value = cfg.ownerNumber || '';
     $('knowledge').value = cfg.knowledge || '';
     $('triggerPrefix').value = cfg.triggerPrefix || '';
     $('enabled').checked = !!cfg.enabled;
@@ -115,26 +116,48 @@ function escapeHtml(s) {
   return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
 
-function renderLeads(leads) {
+function renderLeads(customers) {
   const el = $('leads');
-  if (!leads.length) {
-    el.innerHTML = '<div class="log-line">No leads yet. They appear here as the agent collects customer details.</div>';
+  if (!customers.length) {
+    el.innerHTML = '<div class="log-line">No customers yet. Details appear here as the agent talks to them.</div>';
     return;
   }
-  el.innerHTML = leads
-    .map((l) => {
-      const t = new Date(l.ts).toLocaleString();
-      const parts = [l.businessName, l.businessType, l.city, l.product].filter(Boolean).join(' · ');
-      const wa = (l.whatsapp || '').split('@')[0];
-      return `<div class="log-line info"><span class="t">${t}</span><b>${escapeHtml(l.name)}</b>${parts ? ' — ' + escapeHtml(parts) : ''}${wa ? ' — ' + escapeHtml(wa) : ''}${l.notes ? '<br>' + escapeHtml(l.notes) : ''}</div>`;
+  const stageLabel = {
+    new: 'new',
+    interested: 'interested',
+    demo_pending: 'demo pending',
+    demo_done: 'demo done',
+    negotiating: 'negotiating',
+    ready_to_buy: 'ready to buy',
+    not_interested: 'not interested',
+  };
+  el.innerHTML = customers
+    .map((c) => {
+      const t = c.lastSeen ? new Date(c.lastSeen).toLocaleString() : '';
+      const wa = (c.jid || '').split('@')[0];
+      const rows = [
+        ['Name', c.name],
+        ['Business', c.businessName],
+        ['Type', c.businessType],
+        ['City', c.city],
+        ['Wants', c.product],
+        ['Budget', c.budget],
+        ['Timeline', c.timeline],
+        ['Email', c.email],
+      ].filter(([, v]) => v);
+      const stage = c.stage ? `<span class="badge">${escapeHtml(stageLabel[c.stage] || c.stage)}</span>` : '';
+      return `<div class="log-line info"><span class="t">${t}</span><b>${escapeHtml(c.name || wa || 'Unknown')}</b> ${stage}
+        ${rows.map(([k, v]) => `<div class="kv"><span>${k}</span>${escapeHtml(v)}</div>`).join('')}
+        ${c.summary ? `<div class="kv"><span>Notes</span>${escapeHtml(c.summary)}</div>` : ''}
+        ${wa ? `<div class="kv"><span>WhatsApp</span>${escapeHtml(wa)}</div>` : ''}</div>`;
     })
     .join('');
 }
 
 async function loadLeads() {
   try {
-    const r = await fetch('/api/leads').then((x) => x.json());
-    renderLeads(r.leads || []);
+    const r = await fetch('/api/customers').then((x) => x.json());
+    renderLeads(r.customers || []);
   } catch {}
 }
 
@@ -220,6 +243,7 @@ $('saveBtn').addEventListener('click', async () => {
     model: $('model').value,
     baseUrl: $('baseUrl').value,
     systemPrompt: $('systemPrompt').value,
+    ownerNumber: $('ownerNumber').value,
     knowledge: $('knowledge').value,
     triggerPrefix: $('triggerPrefix').value,
     enabled: $('enabled').checked,
@@ -278,6 +302,21 @@ $('cancelPairBtn').addEventListener('click', async () => {
 });
 
 $('restartBtn').addEventListener('click', () => post('/api/restart'));
+$('testAlertBtn').addEventListener('click', async () => {
+  const msg = $('cfgMsg');
+  msg.className = 'msg';
+  msg.textContent = 'Sending test alert…';
+  // Save the number first so the server can use it.
+  await post('/api/config', { ownerNumber: $('ownerNumber').value });
+  const r = await post('/api/test-alert');
+  if (r.ok) {
+    msg.className = 'msg ok';
+    msg.textContent = 'Test alert sent. Check your WhatsApp.';
+  } else {
+    msg.className = 'msg err';
+    msg.textContent = r.error || 'Could not send the test alert.';
+  }
+});
 $('refreshLeadsBtn').addEventListener('click', loadLeads);
 $('logoutBtn').addEventListener('click', async () => {
   if (confirm('Log out of WhatsApp and unlink this device?')) await post('/api/logout');

@@ -67,6 +67,10 @@
     <label>Base URL <span class="hint">(only for custom)</span></label>
     <input id="baseUrl" type="text" placeholder="https://..." />
 
+    <label>Your WhatsApp number for lead alerts <span class="hint">(country code, no "+", e.g. 923200199895 — you get a DM here for every new customer)</span></label>
+    <input id="ownerNumber" type="text" placeholder="923200199895" />
+    <button id="testAlertBtn" class="ghost" type="button">Send test alert</button>
+
     <label>System prompt</label>
     <textarea id="systemPrompt" rows="4"></textarea>
 
@@ -90,8 +94,8 @@
   </section>
 
   <section class="card">
-    <h2>3. Customer leads</h2>
-    <p class="hint">Details the agent collected from customers. <button id="refreshLeadsBtn" class="ghost small" type="button">Refresh</button></p>
+    <h2>3. Customers the agent remembers</h2>
+    <p class="hint">Everything the agent has learned about each customer, so it never asks twice. <button id="refreshLeadsBtn" class="ghost small" type="button">Refresh</button></p>
     <div id="leads" class="logs"></div>
   </section>
 

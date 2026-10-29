@@ -1,4 +1,4 @@
-import { saveLead, log } from './store.js';
+import { saveLead, updateCustomer, markOwnerAlerted, log } from './store.js';
 
 const UA =
   'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36';
@@ -98,9 +98,53 @@ export const toolDefinitions = [
   {
     type: 'function',
     function: {
+      name: 'remember_customer',
+      description:
+        'Save or update what you learn about this customer as the conversation goes on: their name, business, city, the software they want, budget, timeline and how far along the deal is. Call this whenever you learn something new. Do not ask for details you already know.',
+      parameters: {
+        type: 'object',
+        properties: {
+          name: { type: 'string', description: 'Customer name.' },
+          business_name: { type: 'string', description: 'Name of their business.' },
+          business_type: { type: 'string', description: 'What kind of business they run.' },
+          city: { type: 'string', description: 'Their city.' },
+          product: { type: 'string', description: 'Which TECH ARSLAN product they are interested in.' },
+          email: { type: 'string', description: 'Their email, if they share one.' },
+          budget: { type: 'string', description: 'Budget they mention.' },
+          timeline: { type: 'string', description: 'When they want to start, e.g. this month.' },
+          stage: {
+            type: 'string',
+            description: 'Where the deal stands: new, interested, demo_pending, demo_done, negotiating, ready_to_buy, not_interested.',
+          },
+          summary: {
+            type: 'string',
+            description: 'One or two lines summarising their requirement, so you remember it next time.',
+          },
+        },
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'alert_owner',
+      description:
+        'Send a WhatsApp alert to the business owner (Arslan) about a customer who is ready for a human to contact them. Call this once you have the customer name and what they need, and definitely when they agree to a demo or to buy.',
+      parameters: {
+        type: 'object',
+        properties: {
+          reason: { type: 'string', description: 'Why the owner should follow up, e.g. agreed to demo.' },
+        },
+        required: ['reason'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
       name: 'save_lead',
       description:
-        'Save a sales lead once the customer has shared their details. Call this when you have at least their name and what they need, then tell them the team will contact them.',
+        'Mark the customer as a qualified lead once you have at least their name and what they need. Also alerts the owner.',
       parameters: {
         type: 'object',
         properties: {
@@ -117,21 +161,64 @@ export const toolDefinitions = [
   },
 ];
 
-export async function runTool(name, args, jid) {
+export async function runTool(name, args, ctx = {}) {
+  const { jid = '', notifyOwner } = ctx;
   if (name === 'web_search') return webSearch(args?.query || '');
   if (name === 'current_time') return new Date().toString();
-  if (name === 'save_lead') {
-    const lead = saveLead({
-      name: args?.name || '',
-      businessName: args?.business_name || '',
-      city: args?.city || '',
-      product: args?.product || '',
-      businessType: args?.business_type || '',
-      notes: args?.notes || '',
-      whatsapp: jid || '',
+
+  if (name === 'remember_customer') {
+    const c = updateCustomer(jid, {
+      name: args?.name,
+      businessName: args?.business_name,
+      businessType: args?.business_type,
+      city: args?.city,
+      product: args?.product,
+      email: args?.email,
+      budget: args?.budget,
+      timeline: args?.timeline,
+      stage: args?.stage,
+      summary: args?.summary,
     });
-    log('info', `Lead saved: ${lead.name} (${lead.product || 'product not set'})`);
-    return 'Lead saved. Thank the customer and tell them the TECH ARSLAN team will contact them on this WhatsApp number shortly.';
+    log('info', `Remembered customer ${c.name || jid}${c.product ? ` (${c.product})` : ''}`);
+    return 'Saved. Use what you know about this customer and do not ask for those details again.';
   }
+
+  if (name === 'alert_owner' || name === 'save_lead') {
+    const c = updateCustomer(jid, {
+      name: args?.name,
+      businessName: args?.business_name,
+      businessType: args?.business_type,
+      city: args?.city,
+      product: args?.product,
+      notes: args?.notes,
+      stage: args?.stage || (name === 'save_lead' ? 'interested' : undefined),
+    });
+    handoffToOwner(c, args?.reason || args?.notes || '', notifyOwner);
+    return 'Done. The owner has been alerted and will contact the customer. Tell the customer that Arslan from TECH ARSLAN will personally get in touch on this WhatsApp number shortly.';
+  }
+
   return `Unknown tool: ${name}`;
+}
+
+// Record the lead and DM the owner. Kept separate so the agent can also be forced
+// to hand over a qualified customer even if it forgot to call the tool itself.
+export function handoffToOwner(customer, reason, notifyOwner) {
+  const c = customer || {};
+  saveLead({
+    name: c.name || '',
+    businessName: c.businessName || '',
+    city: c.city || '',
+    product: c.product || '',
+    businessType: c.businessType || '',
+    notes: c.notes || c.summary || '',
+    whatsapp: c.jid || '',
+    reason: reason || '',
+  });
+  log('info', `Lead for owner: ${c.name || c.jid}${c.product ? ` — ${c.product}` : ''}`);
+  if (c.jid) markOwnerAlerted(c.jid);
+  if (typeof notifyOwner === 'function') {
+    notifyOwner({ customer: c, reason: reason || '' }).catch((e) =>
+      log('error', 'Owner alert failed', e.message),
+    );
+  }
 }

@@ -27,6 +27,7 @@ export function defaultConfig() {
     systemPrompt:
       'You are the official WhatsApp sales and support assistant for TECH ARSLAN SOFTWARE SOLUTIONS. Be warm, professional and brief. Use plain text only, no markdown.',
     knowledge: DEFAULT_KNOWLEDGE,
+    ownerNumber: '',
     enabled: true,
     respondToGroups: false,
     triggerPrefix: '',
@@ -36,8 +37,80 @@ export function defaultConfig() {
 export const store = {
   config: { ...defaultConfig(), ...readJson(CONFIG_FILE, {}) },
   history: readJson(HISTORY_FILE, {}),
+  customers: {},
   logs: [],
 };
+
+const CUSTOMERS_FILE = path.join(DATA_DIR, 'customers.json');
+store.customers = readJson(CUSTOMERS_FILE, {});
+
+// What the agent remembers about each customer across conversations.
+const CUSTOMER_FIELDS = [
+  'name',
+  'businessName',
+  'businessType',
+  'city',
+  'product',
+  'phone',
+  'email',
+  'budget',
+  'timeline',
+  'notes',
+  'stage',
+  'summary',
+];
+
+export function getCustomer(jid) {
+  return store.customers[jid] || null;
+}
+
+export function updateCustomer(jid, patch) {
+  const cur = store.customers[jid] || { jid, firstSeen: new Date().toISOString() };
+  for (const k of CUSTOMER_FIELDS) {
+    if (typeof patch?.[k] === 'string' && patch[k].trim()) cur[k] = patch[k].trim();
+  }
+  cur.lastSeen = new Date().toISOString();
+  store.customers[jid] = cur;
+  writeJson(CUSTOMERS_FILE, store.customers);
+  return cur;
+}
+
+export function markOwnerAlerted(jid) {
+  const c = store.customers[jid];
+  if (!c) return;
+  c.ownerAlerted = true;
+  c.ownerAlertedAt = new Date().toISOString();
+  writeJson(CUSTOMERS_FILE, store.customers);
+}
+
+export function needsOwnerAlert(jid) {
+  const c = store.customers[jid];
+  if (!c) return false;
+  if (c.ownerAlerted) return false;
+  // We can only hand over a lead we can actually identify and act on.
+  return Boolean(c.name && (c.product || c.businessType));
+}
+
+export function customerDigest(jid) {
+  const c = store.customers[jid];
+  if (!c) return '';
+  const lines = [];
+  if (c.name) lines.push(`Name: ${c.name}`);
+  if (c.businessName) lines.push(`Business: ${c.businessName}`);
+  if (c.businessType) lines.push(`Business type: ${c.businessType}`);
+  if (c.city) lines.push(`City: ${c.city}`);
+  if (c.product) lines.push(`Interested in: ${c.product}`);
+  if (c.budget) lines.push(`Budget: ${c.budget}`);
+  if (c.timeline) lines.push(`Timeline: ${c.timeline}`);
+  if (c.email) lines.push(`Email: ${c.email}`);
+  if (c.stage) lines.push(`Stage: ${c.stage}`);
+  if (c.summary) lines.push(`Notes: ${c.summary}`);
+  if (!lines.length) return '';
+  const tail = c.ownerAlerted
+    ? 'You have already passed this customer to Arslan. Do not promise a second handover; if they ask, say Arslan will message them shortly.'
+    : 'You have not passed this customer to Arslan yet. Once you have their name and what they need, hand them over.';
+  return `What you already know about this customer (do not ask again):\n${lines.join('\n')}\n${tail}`;
+}
 
 function writeJson(file, value) {
   fs.writeFileSync(file, JSON.stringify(value, null, 2));

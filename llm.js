@@ -84,11 +84,11 @@ export function resolveLlm(config) {
   return { apiKey, baseUrl, model, provider };
 }
 
-export async function chatCompletion({ apiKey, baseUrl, model, messages, tools, temperature = 0.6 }) {
+export async function chatCompletion({ apiKey, baseUrl, model, messages, tools, toolChoice, temperature = 0.6 }) {
   const body = { model, messages, temperature, max_tokens: 900 };
   if (tools?.length) {
     body.tools = tools;
-    body.tool_choice = 'auto';
+    body.tool_choice = toolChoice || 'auto';
   }
 
   let res;
@@ -152,7 +152,7 @@ export async function listModels(config) {
   return { model: llm.model, models: ids };
 }
 
-export async function generateReply(config, messages, tools) {
+export async function generateReply(config, messages, tools, toolChoice) {
   const llm = resolveLlm(config);
-  return chatCompletion({ ...llm, messages, tools });
+  return chatCompletion({ ...llm, messages, tools, toolChoice });
 }

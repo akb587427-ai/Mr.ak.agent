@@ -53,10 +53,40 @@ app.get('/api/state', (_req, res) => res.json(state()));
 
 app.get('/api/leads', (_req, res) => res.json({ ok: true, leads: store.leads.slice().reverse() }));
 
+app.get('/api/customers', (_req, res) => {
+  const list = Object.values(store.customers).sort((a, b) =>
+    String(b.lastSeen || '').localeCompare(String(a.lastSeen || '')),
+  );
+  res.json({ ok: true, customers: list });
+});
+
+app.post('/api/test-alert', async (_req, res) => {
+  try {
+    const { notifyOwner } = await import('./whatsapp.js');
+    const sent = await notifyOwner({
+      customer: {
+        name: 'Test Customer',
+        businessName: 'Test Business',
+        city: 'Lahore',
+        product: 'Pharmacy POS',
+        jid: '920000000000@s.whatsapp.net',
+      },
+      reason: 'This is a test alert from the dashboard.',
+    });
+    res.json(
+      sent
+        ? { ok: true }
+        : { ok: false, error: 'Could not send. Check that an owner number is set and WhatsApp is connected.' },
+    );
+  } catch (e) {
+    res.json({ ok: false, error: e.message });
+  }
+});
+
 app.post('/api/config', (req, res) => {
   const b = req.body || {};
   const c = store.config;
-  for (const k of ['provider', 'model', 'baseUrl', 'systemPrompt', 'triggerPrefix', 'knowledge']) {
+  for (const k of ['provider', 'model', 'baseUrl', 'systemPrompt', 'triggerPrefix', 'knowledge', 'ownerNumber']) {
     if (typeof b[k] === 'string') c[k] = b[k].trim();
   }
   for (const k of ['enabled', 'respondToGroups']) {
