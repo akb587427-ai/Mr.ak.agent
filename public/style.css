@@ -121,3 +121,13 @@ button.danger { background: transparent; color: var(--danger); border: 1px solid
 .log-line.warn { color: #ffd88a; }
 .log-line.info { color: #b8c6cf; }
 @media (max-width: 760px) { main { grid-template-columns: 1fr; } }
+.attribution {
+  grid-column: 1 / -1; text-align: center; padding: 18px 10px 26px;
+  color: var(--muted); font-size: 12px;
+}
+.attribution a { color: var(--accent); text-decoration: none; }
+.attribution a:hover { text-decoration: underline; }
+h3.sub {
+  margin: 22px 0 6px; font-size: 14px; font-weight: 700; color: var(--accent2);
+  border-top: 1px solid var(--line); padding-top: 16px;
+}

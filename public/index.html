@@ -83,6 +83,23 @@
     <div class="row wrap">
       <label class="check"><input id="enabled" type="checkbox" /> Agent enabled</label>
       <label class="check"><input id="respondToGroups" type="checkbox" /> Reply in groups</label>
+      <label class="check"><input id="voiceReplies" type="checkbox" /> Reply to voice notes with a voice note</label>
+    </div>
+
+    <h3 class="sub">Calls</h3>
+    <p class="hint">WhatsApp does not allow a linked device to carry call audio, so a call cannot be answered live. The agent rejects the ring and instantly replies on chat — by voice note or text — then alerts you.</p>
+    <label>When a customer calls</label>
+    <select id="callsMode">
+      <option value="off">Do nothing</option>
+      <option value="text">Reject + send a text reply</option>
+      <option value="voice">Reject + send a spoken voice note</option>
+    </select>
+    <label class="check"><input id="callsNotifyOwner" type="checkbox" /> DM me when a customer calls</label>
+    <label>Call greeting <span class="hint">(optional — what the agent says when a call comes in)</span></label>
+    <textarea id="callsGreeting" rows="3" placeholder="Leave empty to use the default greeting"></textarea>
+    <div class="row">
+      <button id="testVoiceBtn" class="ghost" type="button">Test voice reply</button>
+      <span id="callStatus" class="hint"></span>
     </div>
 
     <div class="row">
@@ -104,6 +121,10 @@
     <div id="logs" class="logs"></div>
   </section>
 </main>
+
+<footer class="attribution">
+  <p>Best instant hosting for LLM agents / Claude Code / Codex &rarr; <a href="https://thevibehosting.com" target="_blank" rel="noopener">https://thevibehosting.com</a></p>
+</footer>
 
 <script src="app.js"></script>
 </body>

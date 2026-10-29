@@ -8,6 +8,7 @@ import makeWASocket, {
   isJidGroup,
   jidNormalizedUser,
   delay,
+  downloadMediaMessage,
 } from '@whiskeysockets/baileys';
 import QRCode from 'qrcode';
 import pino from 'pino';
@@ -15,6 +16,8 @@ import path from 'path';
 import fs from 'fs';
 import { store, log, getHistory, appendHistory } from './store.js';
 import { respond } from './agent.js';
+import { handleCallEvent, voiceRepliesEnabled } from './calls.js';
+import { transcribeAudio, synthesizeSpeech, voiceReady, ffmpegAvailable } from './voice.js';
 
 const AUTH_DIR = process.env.AUTH_DIR || path.join(process.cwd(), 'data', 'auth');
 fs.mkdirSync(AUTH_DIR, { recursive: true });
@@ -220,6 +223,15 @@ async function connect() {
       handleMessage(sock, msg).catch((e) => log('error', 'message handler failed', e.message));
     }
   });
+
+  // Baileys reports a ringing call as a "call" event with status "offer". There is no
+  // way to pick it up (no audio transport), so the handler rejects it and follows up
+  // on the chat instead.
+  sock.ev.on('call', async (calls) => {
+    for (const call of calls || []) {
+      handleCallEvent(sock, call, { notifyOwner }).catch((e) => log('error', 'call handler failed', e.message));
+    }
+  });
 }
 
 // WhatsApp sometimes gives us only the "@lid" id for a chat. Baileys keeps a
@@ -251,10 +263,33 @@ async function handleMessage(sock, msg) {
   const phone = contactJid.endsWith('@lid') ? '' : contactJid.split('@')[0].split(':')[0];
 
   const type = getContentType(msg.message);
-  if (type !== 'conversation' && type !== 'extendedTextMessage') return;
-  const text =
-    (type === 'conversation' ? msg.message.conversation : msg.message.extendedTextMessage?.text || '').trim();
-  if (!text) return;
+  const isVoiceNote = type === 'audioMessage';
+  if (type !== 'conversation' && type !== 'extendedTextMessage' && !isVoiceNote) return;
+
+  let text = '';
+  let wasVoice = false;
+  if (isVoiceNote) {
+    // A customer speaking instead of typing. Transcribe it and answer in kind, so the
+    // conversation stays in the channel the customer chose.
+    if (!voiceReady()) {
+      log('warn', `Voice note from ${jid} ignored — no API key configured`);
+      return;
+    }
+    try {
+      const buffer = await downloadMediaMessage(msg, 'buffer', {}, { logger, reuploadRequest: sock.updateMediaMessage });
+      text = (await transcribeAudio(buffer, msg.message.audioMessage?.mimetype)).trim();
+      wasVoice = true;
+      log('info', `Transcribed voice note from ${jid}: ${text.slice(0, 80)}`);
+    } catch (e) {
+      log('error', 'Could not transcribe voice note', e.message);
+      await sock.sendMessage(replyJid, { text: 'Sorry, aap ka voice message samajh nahi aaya. Please dobara bhejein ya text mein likh dein.' }).catch(() => {});
+      return;
+    }
+    if (!text) return;
+  } else {
+    text = (type === 'conversation' ? msg.message.conversation : msg.message.extendedTextMessage?.text || '').trim();
+    if (!text) return;
+  }
 
   let content = text;
   if (store.config.triggerPrefix) {
@@ -286,6 +321,19 @@ async function handleMessage(sock, msg) {
 
     const { reply } = await respond(contactJid, content, { notifyOwner, phone });
     await delay(300);
+    // Answer a voice note with a voice note. Falls back to text if speech synthesis
+    // fails, so the customer always gets an answer.
+    const sendVoice = wasVoice && voiceRepliesEnabled() && ffmpegAvailable();
+    if (sendVoice) {
+      try {
+        const audio = await synthesizeSpeech(reply);
+        await sock.sendMessage(replyJid, { audio, mimetype: 'audio/ogg; codecs=opus', ptt: true }, { quoted: msg });
+        log('info', `Replied to ${replyJid} with a voice note`);
+        return;
+      } catch (e) {
+        log('warn', 'Voice reply failed, sending text instead', e.message);
+      }
+    }
     await sock.sendMessage(replyJid, { text: reply }, { quoted: msg });
     log('info', `Replied to ${replyJid}`);
   } catch (e) {

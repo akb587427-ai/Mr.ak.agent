@@ -86,6 +86,10 @@ function applyConfig(cfg) {
     $('triggerPrefix').value = cfg.triggerPrefix || '';
     $('enabled').checked = !!cfg.enabled;
     $('respondToGroups').checked = !!cfg.respondToGroups;
+    $('voiceReplies').checked = cfg.voiceReplies !== false;
+    $('callsMode').value = cfg.calls?.mode || 'voice';
+    $('callsNotifyOwner').checked = cfg.calls?.notifyOwner !== false;
+    $('callsGreeting').value = cfg.calls?.greeting || '';
     initialized = true;
   }
   $('keyHint').textContent = cfg.hasKey
@@ -180,6 +184,22 @@ function applyState(data) {
   applyConfig(data.config);
   renderLogs(data.logs || []);
   $('waMsg').textContent = data.wa.lastError && data.wa.status !== 'connected' ? data.wa.lastError : '';
+  renderCalls(data.calls);
+}
+
+function renderCalls(calls) {
+  const el = $('callStatus');
+  if (!el || !calls) return;
+  const parts = [];
+  if (!calls.ffmpeg) parts.push('ffmpeg missing on host');
+  if (!calls.voiceReady) parts.push('no API key');
+  if (calls.total) {
+    const when = calls.lastAt ? new Date(calls.lastAt).toLocaleTimeString() : '';
+    parts.unshift(`${calls.total} call${calls.total > 1 ? 's' : ''} handled${calls.lastFrom ? ` — last from ${calls.lastFrom}` : ''}${when ? ` at ${when}` : ''}`);
+  } else {
+    parts.unshift('No calls received yet');
+  }
+  el.textContent = parts.join(' · ');
 }
 
 async function post(url, body) {
@@ -258,6 +278,12 @@ $('saveBtn').addEventListener('click', async () => {
     triggerPrefix: $('triggerPrefix').value,
     enabled: $('enabled').checked,
     respondToGroups: $('respondToGroups').checked,
+    voiceReplies: $('voiceReplies').checked,
+    calls: {
+      mode: $('callsMode').value,
+      notifyOwner: $('callsNotifyOwner').checked,
+      greeting: $('callsGreeting').value,
+    },
   };
   const key = $('apiKey').value.trim();
   if (key) body.apiKey = key;
@@ -325,6 +351,22 @@ $('testAlertBtn').addEventListener('click', async () => {
   } else {
     msg.className = 'msg err';
     msg.textContent = r.error || 'Could not send the test alert.';
+  }
+});
+$('testVoiceBtn').addEventListener('click', async () => {
+  const msg = $('cfgMsg');
+  msg.className = 'msg';
+  msg.textContent = 'Generating voice… (a few seconds)';
+  await post('/api/config', {
+    calls: { mode: $('callsMode').value, notifyOwner: $('callsNotifyOwner').checked, greeting: $('callsGreeting').value },
+  });
+  const r = await post('/api/test-voice');
+  if (r.ok) {
+    msg.className = 'msg ok';
+    msg.textContent = `Voice reply works — ${(r.bytes / 1024).toFixed(0)} KB OGG generated in ${(r.ms / 1000).toFixed(1)}s.`;
+  } else {
+    msg.className = 'msg err';
+    msg.textContent = r.error || 'Voice test failed.';
   }
 });
 $('refreshLeadsBtn').addEventListener('click', loadLeads);

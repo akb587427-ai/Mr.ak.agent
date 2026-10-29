@@ -31,6 +31,15 @@ export function defaultConfig() {
     enabled: true,
     respondToGroups: false,
     triggerPrefix: '',
+    // Reply to a voice note with a voice note.
+    voiceReplies: true,
+    // What to do when someone calls the number. Baileys cannot carry call audio, so
+    // the call is rejected and the agent follows up on chat instead.
+    calls: {
+      mode: 'voice', // off | text | voice
+      notifyOwner: true,
+      greeting: '',
+    },
   };
 }
 

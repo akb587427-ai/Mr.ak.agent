@@ -7,6 +7,8 @@ import { fileURLToPath } from 'url';
 import { store, saveConfig, log, clearHistory } from './store.js';
 import { PROVIDERS, resolveEndpoints, chatCompletion, listModels, detectProviderFromKey, splitKeys, endpointSummary } from './llm.js';
 import { startWhatsApp, wa, requestPairing, cancelPairing } from './whatsapp.js';
+import { callStats } from './calls.js';
+import { synthesizeSpeech, voiceReady, ffmpegAvailable } from './voice.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT || 12000);
@@ -48,6 +50,7 @@ function state() {
     },
     config: publicConfig(),
     providers: PROVIDERS,
+    calls: { ...callStats, ffmpeg: ffmpegAvailable(), voiceReady: voiceReady() },
     logs: store.logs.slice(-80).reverse(),
   };
 }
@@ -88,14 +91,50 @@ app.post('/api/test-alert', async (_req, res) => {
   }
 });
 
+// Exercises the same speech path the call handler and voice replies use, so the
+// dashboard can prove TTS works without waiting for a real call.
+app.post('/api/test-voice', async (req, res) => {
+  try {
+    if (!voiceReady()) return res.status(400).json({ ok: false, error: 'No API key configured.' });
+    if (!ffmpegAvailable()) return res.status(400).json({ ok: false, error: 'ffmpeg is not installed on this host.' });
+    const text = (
+      req.body?.text ||
+      'Assalam o Alaikum! Yeh TECH ARSLAN SOFTWARE SOLUTIONS ka AI assistant hai. Aap ka call humein mil gaya, please isi chat par apni zaroorat batayein.'
+    ).trim();
+    const started = Date.now();
+    const audio = await synthesizeSpeech(text);
+    // With send=true the note is also delivered to the owner's own DM, which proves
+    // WhatsApp actually renders it as a playable voice note.
+    let sent = false;
+    if (req.body?.send === true) {
+      const { wa } = await import('./whatsapp.js');
+      const owner = String(store.config.ownerNumber || '').replace(/\D/g, '');
+      if (owner && wa.sock && wa.status === 'connected') {
+        await wa.sock.sendMessage(`${owner}@s.whatsapp.net`, { audio, mimetype: 'audio/ogg; codecs=opus', ptt: true });
+        sent = true;
+      }
+    }
+    log('info', `Voice test generated ${audio.length} bytes in ${Date.now() - started}ms${sent ? ' and sent to owner' : ''}`);
+    res.json({ ok: true, bytes: audio.length, ms: Date.now() - started, mime: 'audio/ogg; codecs=opus', sent });
+  } catch (e) {
+    res.status(400).json({ ok: false, error: e.message });
+  }
+});
+
 app.post('/api/config', (req, res) => {
   const b = req.body || {};
   const c = store.config;
   for (const k of ['provider', 'model', 'baseUrl', 'systemPrompt', 'triggerPrefix', 'knowledge', 'ownerNumber']) {
     if (typeof b[k] === 'string') c[k] = b[k].trim();
   }
-  for (const k of ['enabled', 'respondToGroups']) {
+  for (const k of ['enabled', 'respondToGroups', 'voiceReplies']) {
     if (typeof b[k] === 'boolean') c[k] = b[k];
+  }
+  if (b.calls && typeof b.calls === 'object') {
+    c.calls = { ...(c.calls || {}) };
+    if (['off', 'text', 'voice'].includes(b.calls.mode)) c.calls.mode = b.calls.mode;
+    if (typeof b.calls.notifyOwner === 'boolean') c.calls.notifyOwner = b.calls.notifyOwner;
+    if (typeof b.calls.greeting === 'string') c.calls.greeting = b.calls.greeting.trim();
   }
   if (typeof b.apiKey === 'string' && b.apiKey.trim()) c.apiKey = b.apiKey.trim();
   if (b.clearApiKey === true) c.apiKey = '';
