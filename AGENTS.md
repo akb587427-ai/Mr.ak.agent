@@ -256,3 +256,11 @@ Groq serves Whisper as `whisper-large-v3-turbo`, not `whisper-1`; sending OpenAI
 name to Groq 404s. `transcribeOpenAI` now picks the model from the configured provider.
 Groq's free tier is the cheapest way to transcribe: 2K requests/day and 28,800 audio
 seconds/day (8 hours of audio) at no cost.
+
+### Voice note with no key
+
+There is no keyless transcription service, so with no key the agent cannot hear voice
+notes. It used to reply "aap ka voice message samajh nahi aaya", which blames the customer.
+It now says plainly that voice needs setting up and asks for text. `sttReady()` (key
+present) gates transcription while `voiceReady()` (key or edge-tts) gates speaking, so the
+two capabilities are checked separately.

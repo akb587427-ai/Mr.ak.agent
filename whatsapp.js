@@ -17,7 +17,7 @@ import fs from 'fs';
 import { store, log, getHistory, appendHistory } from './store.js';
 import { respond } from './agent.js';
 import { handleCallEvent, voiceRepliesEnabled } from './calls.js';
-import { transcribeAudio, synthesizeSpeech, voiceReady, ffmpegAvailable } from './voice.js';
+import { transcribeAudio, synthesizeSpeech, voiceReady, sttReady, ffmpegAvailable } from './voice.js';
 
 const AUTH_DIR = process.env.AUTH_DIR || path.join(process.cwd(), 'data', 'auth');
 fs.mkdirSync(AUTH_DIR, { recursive: true });
@@ -288,8 +288,13 @@ async function handleMessage(sock, msg) {
   if (isVoiceNote) {
     // A customer speaking instead of typing. Transcribe it and answer in kind, so the
     // conversation stays in the channel the customer chose.
-    if (!voiceReady()) {
-      log('warn', `Voice note from ${jid} ignored — no API key configured`);
+    if (!sttReady()) {
+      // No key means no transcription service at all. Rather than claim the note was
+      // not understood, say plainly that voice needs setting up and invite text.
+      log('warn', `Voice note from ${jid} ignored — transcription needs an API key`);
+      await sock.sendMessage(replyJid, {
+        text: 'Assalam o alaikum! Filhal voice message sunne ke liye AI key set nahi hai. Baraye meherbani apna message text mein likh dein, main foran jawab dunga.',
+      }).catch(() => {});
       return;
     }
     let buffer;

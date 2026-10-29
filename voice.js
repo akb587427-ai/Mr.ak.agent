@@ -70,6 +70,12 @@ export function voiceReady() {
   return splitKeys(store.config.apiKey).length > 0 || edgeTtsUsable;
 }
 
+// Transcription needs a real speech-to-text service; there is no keyless option, so the
+// caller can tell the customer to type instead of pretending the note was understood.
+export function sttReady() {
+  return splitKeys(store.config.apiKey).length > 0;
+}
+
 export async function edgeTtsAvailable() {
   try {
     await run('python3', ['-c', 'import edge_tts'], 20000);
