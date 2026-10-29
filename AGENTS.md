@@ -200,3 +200,18 @@ Verified: 5/5 consecutive transcriptions succeeded, and a full customer-speaks -
 agent-replies-in-male-voice run produced a valid OGG/Opus note, with the speech model
 rotation visibly falling through from `gemini-3.8-flash-tts` (429) to
 `gemini-3.8-flash-lite-tts`.
+
+### API key health monitor (added)
+
+A dead or disabled API key takes the whole agent offline silently: the customer gets no
+reply and the owner has no idea anything is wrong. Observed live — the owner's Gemini
+key began returning **401 "The bound service account is deleted or disabled"** and every
+text and voice reply stopped, with nothing surfaced.
+
+`server.js` now pings the configured model 45s after boot and every 10 minutes. On
+failure it DMs the owner once (with the exact reason, and a "make a new key" pointer for
+auth errors) and the dashboard shows a red banner. State is in `GET /api/state` under
+`health`, rendered by `renderHealth` in `public/app.js`.
+
+A per-model 429/503 is *not* a health failure — that is handled by the existing rotation
+in `llm.js` and `voice.js`. Only a failure that survives rotation trips the alert.

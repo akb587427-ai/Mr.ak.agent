@@ -81,6 +81,21 @@ function fillVoices(voices) {
   sel.value = 'Charon';
 }
 
+// A dead API key is invisible in chat: the customer just gets silence. Surface it
+// loudly on the dashboard so the owner knows to paste a new key.
+function renderHealth(h) {
+  const el = $('keyAlert');
+  if (!h || h.ok !== false) {
+    el.hidden = true;
+    return;
+  }
+  const auth = /401|403|UNAUTHENTICATED|PERMISSION_DENIED|deleted or disabled|API key not valid/i.test(h.reason || '');
+  $('keyAlertMsg').textContent = auth
+    ? 'Aap ki API key delete ya disable ho gayi hai. Nayi key banayein (aistudio.google.com/apikey), AI settings mein paste karke Save karein.'
+    : h.reason || 'AI jawab fail ho raha hai.';
+  el.hidden = false;
+}
+
 function applyConfig(cfg) {
   if (!initialized) {
     $('provider').value = cfg.provider;
@@ -191,6 +206,7 @@ function applyState(data) {
   setStatus(data.wa.status, data.wa.me);
   renderQr(data.wa);
   renderPairing(data.wa);
+  renderHealth(data.health);
   applyConfig(data.config);
   renderLogs(data.logs || []);
   $('waMsg').textContent = data.wa.lastError && data.wa.status !== 'connected' ? data.wa.lastError : '';

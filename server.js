@@ -6,7 +6,7 @@ import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { store, saveConfig, log, clearHistory } from './store.js';
 import { PROVIDERS, resolveEndpoints, chatCompletion, listModels, detectProviderFromKey, splitKeys, endpointSummary } from './llm.js';
-import { startWhatsApp, wa, requestPairing, cancelPairing } from './whatsapp.js';
+import { startWhatsApp, wa, requestPairing, cancelPairing, notifyOwner } from './whatsapp.js';
 import { callStats } from './calls.js';
 import { synthesizeSpeech, voiceReady, ffmpegAvailable, VOICES } from './voice.js';
 
@@ -52,6 +52,7 @@ function state() {
     providers: PROVIDERS,
     calls: { ...callStats, ffmpeg: ffmpegAvailable(), voiceReady: voiceReady() },
     voices: VOICES,
+    health: healthState(),
     logs: store.logs.slice(-80).reverse(),
   };
 }
@@ -245,6 +246,55 @@ wss.on('connection', (ws) => {
 });
 
 setInterval(broadcast, 2500);
+
+// A dead or disabled API key takes the whole agent offline silently — customers get
+// no reply and the owner has no idea. Check the key periodically and DM the owner the
+// moment it breaks, with the exact reason, so it can be replaced.
+const health = { ok: null, reason: '', notified: false, checkedAt: 0 };
+export function healthState() {
+  return { ...health };
+}
+
+async function checkKey() {
+  if (!splitKeys(store.config.apiKey).length) {
+    health.ok = false;
+    health.reason = 'No API key saved';
+  } else {
+    try {
+      const { chatCompletion } = await import('./llm.js');
+      await chatCompletion({
+        endpoints: resolveEndpoints(store.config),
+        messages: [{ role: 'user', content: 'ping' }],
+      });
+      health.ok = true;
+      health.reason = '';
+      health.notified = false;
+    } catch (e) {
+      health.ok = false;
+      health.reason = String(e?.message || e).slice(0, 300);
+    }
+  }
+  health.checkedAt = Date.now();
+
+  if (!health.ok && !health.notified && wa.status === 'connected') {
+    health.notified = true;
+    const auth = /401|403|UNAUTHENTICATED|PERMISSION_DENIED|deleted or disabled|API key not valid/i.test(health.reason);
+    const body = auth
+      ? [
+          '⚠️ AI key band ho gayi hai — agent jawab nahi de raha',
+          '',
+          'Aap ki Gemini/LLM API key kaam nahi kar rahi. Neeche wajah likhi hai.',
+          'Nayi key banayein (aistudio.google.com/apikey) aur dashboard ke AI settings mein paste karke Save karein.',
+          '',
+          `Wajah: ${health.reason}`,
+        ]
+      : ['⚠️ AI jawab fail ho raha hai', '', `Wajah: ${health.reason}`];
+    await notifyOwner({ customer: {}, reason: body.join('\n') }).catch(() => {});
+  }
+}
+
+setInterval(checkKey, 10 * 60 * 1000);
+setTimeout(checkKey, 45 * 1000);
 
 server.listen(PORT, '0.0.0.0', () => {
   log('info', `Web app listening on port ${PORT}`);

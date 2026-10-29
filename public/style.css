@@ -131,3 +131,19 @@ h3.sub {
   margin: 22px 0 6px; font-size: 14px; font-weight: 700; color: var(--accent2);
   border-top: 1px solid var(--line); padding-top: 16px;
 }
+
+.key-alert {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0 0 18px;
+  padding: 14px 18px;
+  border-radius: 12px;
+  background: #3b1219;
+  border: 1px solid #a1303f;
+  color: #ffd9de;
+  font-size: 14px;
+  line-height: 1.5;
+}
+.key-alert strong { color: #ff8a9b; font-size: 15px; }
+.key-alert[hidden] { display: none; }
