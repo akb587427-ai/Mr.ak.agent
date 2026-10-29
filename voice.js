@@ -43,6 +43,10 @@ export const VOICES = [
   { id: 'edge:hi-IN-MadhurNeural', label: 'Madhur — male, Hindi (free, unlimited)' },
   { id: 'edge:en-US-GuyNeural', label: 'Guy — male, English (free, unlimited)' },
   { id: 'edge:ur-PK-UzmaNeural', label: 'Uzma — female, Urdu (free, unlimited)' },
+  { id: 'groq:canopylabs/orpheus-v1-english:tara', label: 'Tara — female, English (Groq, free)' },
+  { id: 'groq:canopylabs/orpheus-v1-english:daniel', label: 'Daniel — male, English (Groq, free)' },
+  { id: 'groq:canopylabs/orpheus-arabic-saudi:abdullah', label: 'Abdullah — male, Arabic (Groq, free)' },
+  { id: 'groq:canopylabs/orpheus-arabic-saudi:aisha', label: 'Aisha — female, Arabic (Groq, free)' },
 ];
 // The default is the free, keyless Urdu male voice: it costs nothing, has no quota,
 // and keeps working even when no API key is configured. Gemini voices remain available
@@ -58,7 +62,25 @@ function selectedVoice() {
 }
 // WhatsApp itself caps a voice note at 16 minutes; staying well under keeps replies
 // quick and the upload small.
-const MAX_TTS_CHARS = 1200;
+const MAX_TTS_CHARS = 3000;
+
+// Replies are written for a screen, so they carry markdown, bullet characters and
+// emoji. Spoken aloud those become "star star" and stray symbols, which is a large part
+// of why the voice sounded wrong. Strip the formatting and keep the words.
+function speechText(text) {
+  return String(text || '')
+    .replace(/```[\s\S]*?```/g, ' ')
+    .replace(/`([^`]*)`/g, '$1')
+    .replace(/!?\[([^\]]*)\]\([^)]*\)/g, '$1')
+    .replace(/^\s{0,3}#{1,6}\s*/gm, '')
+    .replace(/^\s*[-*+•]\s+/gm, '')
+    .replace(/^\s*\d+[.)]\s+/gm, '')
+    .replace(/[*_~]{1,3}/g, '')
+    .replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE0F}\u{2190}-\u{21FF}]/gu, ' ')
+    .replace(/\|/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
 
 // Cached because state() is synchronous; refreshed at startup and after config changes.
 let edgeTtsUsable = true;
@@ -107,6 +129,18 @@ async function withTempDir(fn) {
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
+}
+
+// WhatsApp plays a voice note as OGG/Opus, while Groq's speech endpoint returns WAV.
+// Transcode so a Groq voice arrives as a playable voice note rather than a file.
+async function wavToOgg(wav) {
+  return withTempDir(async (dir) => {
+    const inFile = path.join(dir, 'speech.wav');
+    const outFile = path.join(dir, 'speech.ogg');
+    fs.writeFileSync(inFile, wav);
+    await run('ffmpeg', ['-y', '-i', inFile, '-c:a', 'libopus', '-b:a', '32k', '-application', 'voip', outFile]);
+    return fs.readFileSync(outFile);
+  });
 }
 
 async function geminiGenerate(model, body, key) {
@@ -298,15 +332,49 @@ async function synthesizeOpenAI(text, key) {
   return Buffer.from(await res.arrayBuffer());
 }
 
+// Groq's Orpheus voices are the most natural of the free options, but the model has to
+// be accepted once in the Groq console before it answers. When it has not been, the
+// error is raised here and the caller falls back to the Edge voice.
+async function synthesizeGroq(text, model, voice) {
+  const key = splitKeys(store.config.apiKey)[0];
+  if (!key) throw new Error('no API key configured');
+  const res = await fetch('https://api.groq.com/openai/v1/audio/speech', {
+    method: 'POST',
+    headers: { authorization: `Bearer ${key}`, 'content-type': 'application/json' },
+    body: JSON.stringify({ model, voice, input: text, response_format: 'wav' }),
+  });
+  if (!res.ok) throw new Error(`Groq TTS ${res.status}: ${(await res.text()).slice(0, 180)}`);
+  return wavToOgg(Buffer.from(await res.arrayBuffer()));
+}
+
+// Cutting a reply mid-sentence is what made a long answer sound like it stopped halfway,
+// so trim back to the last sentence that fits and only fall back to a hard cut when there
+// is no sentence end to use.
+function fitToLimit(text, limit) {
+  if (text.length <= limit) return text;
+  const head = text.slice(0, limit);
+  const cut = Math.max(head.lastIndexOf('. '), head.lastIndexOf('? '), head.lastIndexOf('! '), head.lastIndexOf('۔ '));
+  return cut > limit * 0.5 ? head.slice(0, cut + 1).trim() : head.trim();
+}
+
 export async function synthesizeSpeech(text) {
-  const clean = String(text || '').replace(/\s+/g, ' ').trim().slice(0, MAX_TTS_CHARS);
+  const clean = fitToLimit(speechText(text), MAX_TTS_CHARS);
   if (!clean) throw new Error('Nothing to speak');
   const voice = selectedVoice();
 
-  // The keyless Edge voice is used when it was chosen, and as the fallback when a
-  // Gemini voice cannot be produced, so a missing key never silences the reply.
+  // A keyless Edge voice, or a Groq voice that falls back to Edge when its terms have
+  // not been accepted yet, so the customer still hears a reply.
   if (voice.startsWith('edge:')) {
     return synthesizeEdge(clean, voice.slice(5));
+  }
+  if (voice.startsWith('groq:')) {
+    const [, model, name] = voice.split(':');
+    try {
+      return await synthesizeGroq(await toSpeakableScript(clean, model), model, name);
+    } catch (e) {
+      log('warn', `Groq voice failed (${String(e.message).slice(0, 120)}), using the free Edge voice`);
+      return synthesizeEdge(clean, FALLBACK_EDGE_VOICE);
+    }
   }
   if (!splitKeys(store.config.apiKey).length) {
     return synthesizeEdge(clean, FALLBACK_EDGE_VOICE);
@@ -351,41 +419,64 @@ const DEVA_RE = /[\u0900-\u097F]/;
 function targetScript(voice) {
   if (/^(ur|fa|ar)-/i.test(voice)) return { re: URDU_RE, script: 'Urdu in Arabic script, as written in Pakistan' };
   if (/^(hi|mr|ne)-/i.test(voice)) return { re: DEVA_RE, script: 'Devanagari script' };
+  // The Groq Arabic model reads Arabic script, so it needs the same conversion as Urdu.
+  if (/orpheus-arabic/i.test(voice)) return { re: URDU_RE, script: 'Urdu in Arabic script, as written in Pakistan' };
   return null;
 }
 
 // These voices read their own script, not Latin letters. Roman Urdu such as "pharmacy ka
 // software 45000 rupay hai" came out as "फार्मसी का सौफ्ट्वर" — audible garbage, and the
-// owner reported exactly that. Transliterate first so the voice reads real Urdu.
+// owner reported exactly that. Every word has to be converted, brand names included,
+// because a single leftover Latin word is read in the wrong language and the rest of the
+// sentence stops making sense.
+const LATIN_RE = /[A-Za-z]/;
+
 async function toSpeakableScript(text, voice) {
   const target = targetScript(voice);
-  if (!target || target.re.test(text)) return text;
+  if (!target) return text;
+  // Nothing to do when the text is already readable by this voice.
+  if (target.re.test(text) && !LATIN_RE.test(text)) return text;
   if (!splitKeys(store.config.apiKey).length) return text;
-  try {
-    const choice = await chatCompletion({
-      endpoints: resolveEndpoints(store.config),
-      messages: [
-        {
-          role: 'system',
-          content:
-            `Transliterate the user's text into ${target.script}. Keep numbers, prices, ` +
-            'brand names and English words as they are. Reply with only the transliterated ' +
-            'text and nothing else.',
-        },
-        { role: 'user', content: text },
-      ],
-      temperature: 0,
-      // The default 600-token budget is not enough for a reasoning model, which spends
-      // it on its thinking and returns no text at all.
-      maxTokens: 2000,
-    });
-    const out = (choice.content || '').trim();
-    // Only trust the conversion if it actually produced the expected script.
-    if (out && target.re.test(out)) return out;
-    log('warn', `Transliteration for speech returned no ${target.script}; speaking the original text`);
-  } catch (e) {
-    log('warn', `Could not transliterate for speech: ${String(e.message).slice(0, 80)}`);
+
+  const instruction = (leftover) =>
+    `Rewrite the user's text in ${target.script}, the way a Pakistani speaker would say ` +
+    'it. Write every word in that script, including English and brand names, spelled ' +
+    'out the way they sound in Pakistani speech. Digits such as prices may stay as ' +
+    'digits. Reply with only the rewritten text and nothing else.' +
+    (leftover ? ` These words are still in Latin letters and must be converted too: ${leftover}.` : '');
+
+  let out = '';
+  let source = text;
+  let leftover = '';
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const choice = await chatCompletion({
+        endpoints: resolveEndpoints(store.config),
+        messages: [
+          { role: 'system', content: instruction(leftover) },
+          { role: 'user', content: source },
+        ],
+        temperature: 0,
+        // The default 600-token budget is not enough for a reasoning model, which spends
+        // it on its thinking and returns no text at all.
+        maxTokens: 2000,
+      });
+      out = (choice.content || '').trim();
+    } catch (e) {
+      log('warn', `Could not transliterate for speech: ${String(e.message).slice(0, 80)}`);
+      break;
+    }
+    if (!out || !target.re.test(out)) break;
+    leftover = (out.match(/[A-Za-z]+/g) || []).join(' ');
+    if (!leftover) return out;
+    // A word survived in Latin letters. Ask again, showing it what is still wrong.
+    source = out;
+    log('warn', `Speech text still had Latin words (${leftover.slice(0, 60)}); asking for a full conversion`);
   }
+
+  // A partial conversion is still better than Roman text read aloud by an Urdu voice.
+  if (out && target.re.test(out)) return out;
+  log('warn', `Transliteration for speech returned no ${target.script}; speaking the original text`);
   return text;
 }
 

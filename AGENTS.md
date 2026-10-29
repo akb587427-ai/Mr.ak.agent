@@ -311,3 +311,27 @@ missing import fails loudly instead of only under a customer's message.
 machine where it had been added manually. `setup-voice.sh` installs it, `watchdog.sh` runs
 that script at startup, and the `Dockerfile` installs python3, pip and ffmpeg and calls the
 script while building. A fresh machine now speaks without any manual step.
+
+### Speech text is cleaned and fully transliterated
+
+Three separate faults made voice replies hard to understand:
+
+1. Replies are written for a screen, so they arrive with `**bold**`, bullet dashes and
+   emoji. Spoken literally those became "star star" and stray symbols. `speechText()`
+   strips markdown, bullets, links and emoji before synthesis.
+2. `MAX_TTS_CHARS` was 1200, so a normal long answer was cut mid-word and sounded like it
+   stopped halfway. The limit is now 3000 and `fitToLimit()` trims back to the last full
+   sentence instead of cutting mid-word.
+3. The transliteration instruction said to leave brand names and English words alone, so
+   `TECH ARSLAN SOFTWARE SOLUTIONS` and `assistant` stayed in Latin letters and the Urdu
+   voice read them as garbage. The instruction now converts every word, and
+   `toSpeakableScript()` re-asks up to three times while any Latin letters remain,
+   naming the words that are still wrong. Verified: a full markdown reply with a brand
+   name now comes back as clean Urdu from Whisper.
+
+### Groq Orpheus voices
+
+`groq:` voice ids use Groq's Orpheus TTS, the most natural free option. The models need a
+one-time terms acceptance in the Groq console; until that is done the API returns 400 and
+`synthesizeGroq` lets the caller fall back to the free Edge voice, so a customer still
+hears a reply. WAV output is transcoded to OGG/Opus by `wavToOgg()`.
