@@ -93,9 +93,10 @@ export async function chatCompletion({ apiKey, baseUrl, model, messages, tools, 
 
   let res;
   let text;
-  // Free tiers (Groq, OpenRouter) rate limit per minute. Retry a few times instead
-  // of dropping the customer's message.
-  for (let attempt = 0; attempt < 3; attempt++) {
+  // Free tiers (Groq, OpenRouter) rate limit per minute. Wait out the window and
+  // retry rather than dropping the customer's message.
+  const MAX_ATTEMPTS = 4;
+  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
     res = await fetch(`${baseUrl}/chat/completions`, {
       method: 'POST',
       headers: {
@@ -107,8 +108,8 @@ export async function chatCompletion({ apiKey, baseUrl, model, messages, tools, 
     });
     text = await res.text();
     if (res.status !== 429) break;
-    const wait = Math.min(Number(res.headers.get('retry-after')) * 1000 || 0, 8000) || 4000 * (attempt + 1);
-    if (attempt < 2) await new Promise((r) => setTimeout(r, wait));
+    if (attempt === MAX_ATTEMPTS - 1) break;
+    await new Promise((r) => setTimeout(r, rateLimitWait(res, attempt)));
   }
 
   let data;
@@ -120,13 +121,24 @@ export async function chatCompletion({ apiKey, baseUrl, model, messages, tools, 
   if (!res.ok) {
     const msg = data?.error?.message || data?.message || text.slice(0, 300);
     if (res.status === 429) {
-      throw new Error('The AI provider is rate limiting us right now. Please try again in a few seconds.');
+      const err = new Error('The AI provider is rate limiting us right now.');
+      err.rateLimited = true;
+      err.retryAfterMs = rateLimitWait(res, 0);
+      throw err;
     }
     throw new Error(`LLM error ${res.status}: ${msg}`);
   }
   const choice = data.choices?.[0]?.message;
   if (!choice) throw new Error('LLM returned no choices.');
   return choice;
+}
+
+// Groq reports the wait in the retry-after header, and otherwise quotes a number
+// of seconds inside the message ("Please try again in 6.1s").
+function rateLimitWait(res, attempt) {
+  const header = Number(res.headers.get('retry-after'));
+  if (Number.isFinite(header) && header > 0) return Math.min(header * 1000 + 500, 30000);
+  return 5000 * (attempt + 1);
 }
 
 export async function listModels(config) {

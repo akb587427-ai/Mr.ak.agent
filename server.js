@@ -67,9 +67,11 @@ app.post('/api/test-alert', async (_req, res) => {
       customer: {
         name: 'Test Customer',
         businessName: 'Test Business',
+        businessType: 'pharmacy',
         city: 'Lahore',
         product: 'Pharmacy POS',
-        jid: '920000000000@s.whatsapp.net',
+        phone: '923001234567',
+        jid: '923001234567@s.whatsapp.net',
       },
       reason: 'This is a test alert from the dashboard.',
     });

@@ -5,7 +5,9 @@ import {
   appendHistory,
   customerDigest,
   getCustomer,
+  updateCustomer,
   needsOwnerAlert,
+  shouldAlertOwner,
   log,
   store,
 } from './store.js';
@@ -46,8 +48,20 @@ async function extractCustomer(config, jid, transcript) {
   }
 }
 
+// Extraction costs a second API call. Only run it while the profile is still
+// missing the details we need for the handover.
+function needsExtraction(jid) {
+  const c = getCustomer(jid);
+  if (!c) return true;
+  if (c.ownerAlerted) return false;
+  return !(c.name && (c.product || c.businessType));
+}
+
 export async function respond(jid, userText, ctx = {}) {
   const config = store.config;
+  // The chat id is not always a phone number (WhatsApp hides it behind "@lid").
+  // Record the real number whenever the caller knows it.
+  if (ctx.phone) updateCustomer(jid, { phone: ctx.phone });
   const digest = customerDigest(jid);
   const system = [config.systemPrompt, config.knowledge, digest].filter(Boolean).join('\n\n');
   const messages = [
@@ -91,12 +105,16 @@ export async function respond(jid, userText, ctx = {}) {
 
   // Pull whatever the customer revealed into their profile, then make sure the
   // owner is alerted exactly once, even if the model never called a tool itself.
-  const transcript = getHistory(jid)
-    .map((m) => `${m.role === 'user' ? 'Customer' : 'Assistant'}: ${m.content}`)
-    .join('\n');
-  await extractCustomer(config, jid, transcript);
+  // Skipped once the profile is complete and handed over, to save API quota.
+  if (!ctx.skipExtraction && needsExtraction(jid)) {
+    const transcript = getHistory(jid)
+      .map((m) => `${m.role === 'user' ? 'Customer' : 'Assistant'}: ${m.content}`)
+      .join('\n')
+      .slice(-2000);
+    await extractCustomer(config, jid, transcript);
+  }
 
-  if (needsOwnerAlert(jid)) {
+  if (shouldAlertOwner(jid)) {
     const c = getCustomer(jid);
     log('info', `Auto-handing over ${c.name} to owner`);
     handoffToOwner(c, 'Customer shared their details and interest.', ctx.notifyOwner);

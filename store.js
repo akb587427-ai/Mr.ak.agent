@@ -80,6 +80,7 @@ export function markOwnerAlerted(jid) {
   if (!c) return;
   c.ownerAlerted = true;
   c.ownerAlertedAt = new Date().toISOString();
+  c.ownerAlertedStage = c.stage || '';
   writeJson(CUSTOMERS_FILE, store.customers);
 }
 
@@ -89,6 +90,15 @@ export function needsOwnerAlert(jid) {
   if (c.ownerAlerted) return false;
   // We can only hand over a lead we can actually identify and act on.
   return Boolean(c.name && (c.product || c.businessType));
+}
+
+// A second alert is only worth sending when the customer moves to ready-to-buy,
+// so the owner is not pinged again for the same lead.
+export function shouldAlertOwner(jid) {
+  const c = store.customers[jid];
+  if (!c) return false;
+  if (!c.ownerAlerted) return needsOwnerAlert(jid);
+  return c.stage === 'ready_to_buy' && c.ownerAlertedStage !== 'ready_to_buy';
 }
 
 export function customerDigest(jid) {

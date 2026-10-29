@@ -1,4 +1,4 @@
-import { saveLead, updateCustomer, markOwnerAlerted, log } from './store.js';
+import { saveLead, updateCustomer, markOwnerAlerted, log, store } from './store.js';
 
 const UA =
   'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36';
@@ -200,10 +200,19 @@ export async function runTool(name, args, ctx = {}) {
   return `Unknown tool: ${name}`;
 }
 
-// Record the lead and DM the owner. Kept separate so the agent can also be forced
-// to hand over a qualified customer even if it forgot to call the tool itself.
+// Record the lead and DM the owner. Called from the tool and also from the agent
+// as a safety net, so it dedupes: one alert per lead, plus one more if the
+// customer later becomes ready to buy.
 export function handoffToOwner(customer, reason, notifyOwner) {
   const c = customer || {};
+  const jid = c.jid || '';
+  const existing = jid ? store.customers[jid] : null;
+  const stage = c.stage || existing?.stage || '';
+  const readyNow = stage === 'ready_to_buy';
+  const alreadyAlerted = Boolean(existing?.ownerAlerted);
+  const alertedReady = existing?.ownerAlertedStage === 'ready_to_buy';
+  if (alreadyAlerted && !(readyNow && !alertedReady)) return;
+
   saveLead({
     name: c.name || '',
     businessName: c.businessName || '',
@@ -211,13 +220,13 @@ export function handoffToOwner(customer, reason, notifyOwner) {
     product: c.product || '',
     businessType: c.businessType || '',
     notes: c.notes || c.summary || '',
-    whatsapp: c.jid || '',
+    whatsapp: jid,
     reason: reason || '',
   });
-  log('info', `Lead for owner: ${c.name || c.jid}${c.product ? ` — ${c.product}` : ''}`);
-  if (c.jid) markOwnerAlerted(c.jid);
+  log('info', `Lead for owner: ${c.name || jid}${c.product ? ` — ${c.product}` : ''}`);
+  if (jid) markOwnerAlerted(jid);
   if (typeof notifyOwner === 'function') {
-    notifyOwner({ customer: c, reason: reason || '' }).catch((e) =>
+    notifyOwner({ customer: { ...c, stage }, reason: reason || '' }).catch((e) =>
       log('error', 'Owner alert failed', e.message),
     );
   }

@@ -45,6 +45,11 @@ export async function notifyOwner({ customer, reason }) {
     return false;
   }
   const c = customer || {};
+  // Newer WhatsApp accounts hide the number behind a "@lid" id. Prefer the real
+  // phone number when we have it, so the owner can actually reach the customer.
+  const phone = String(c.phone || '').replace(/\D/g, '');
+  const chatId = String(c.jid || '').split('@')[0];
+  const reachable = phone || (c.jid && !c.jid.endsWith('@lid') ? chatId : '');
   const lines = [
     '🔔 New customer enquiry',
     '',
@@ -55,14 +60,15 @@ export async function notifyOwner({ customer, reason }) {
     c.product ? `Wants: ${c.product}` : null,
     c.budget ? `Budget: ${c.budget}` : null,
     c.timeline ? `Timeline: ${c.timeline}` : null,
+    c.email ? `Email: ${c.email}` : null,
     reason ? `Reason: ${reason}` : null,
     '',
-    c.jid ? `Chat: ${c.jid.split('@')[0]}` : null,
-    'Reply to this customer directly on WhatsApp.',
+    reachable ? `WhatsApp: ${reachable}` : `WhatsApp ID: ${chatId} (number hidden by WhatsApp)`,
+    reachable ? `Open chat: https://wa.me/${reachable}` : null,
   ].filter((l) => l !== null);
   try {
     await wa.sock.sendMessage(`${owner}@s.whatsapp.net`, { text: lines.join('\n') });
-    log('info', `Owner alerted about ${c.name || c.jid || 'a customer'}`);
+    log('info', `Owner alerted about ${c.name || chatId || 'a customer'}`);
     return true;
   } catch (e) {
     log('error', 'Owner alert failed', e.message);
@@ -215,15 +221,33 @@ async function connect() {
   });
 }
 
+// WhatsApp sometimes gives us only the "@lid" id for a chat. Baileys keeps a
+// mapping back to the phone number; use it so the owner sees a real number.
+async function resolvePhoneJid(sock, lid) {
+  try {
+    const pn = await sock?.signalRepository?.lidMapping?.getPNForLID?.(lid);
+    return pn || null;
+  } catch {
+    return null;
+  }
+}
+
 async function handleMessage(sock, msg) {
   if (!msg.message || msg.key.fromMe) return;
   const jid = msg.key.remoteJid;
   if (!jid || jid === 'status@broadcast') return;
   if (isJidGroup(jid) && !store.config.respondToGroups) return;
 
-  // Newer WhatsApp accounts address chats by a "@lid" id. Send the reply back to the
-  // phone-number jid when it is available, so the customer actually receives it.
-  const replyJid = jid.endsWith('@lid') && msg.key.remoteJidAlt ? msg.key.remoteJidAlt : jid;
+  // Newer WhatsApp accounts address chats by a "@lid" id, which is not a phone
+  // number. Resolve the real number jid so replies land and the owner alert shows
+  // a number the owner can actually open a chat with.
+  let contactJid = jid.endsWith('@lid') && msg.key.remoteJidAlt ? msg.key.remoteJidAlt : jid;
+  if (contactJid.endsWith('@lid')) {
+    const pn = await resolvePhoneJid(sock, contactJid);
+    if (pn) contactJid = pn;
+  }
+  const replyJid = contactJid;
+  const phone = contactJid.endsWith('@lid') ? '' : contactJid.split('@')[0].split(':')[0];
 
   const type = getContentType(msg.message);
   if (type !== 'conversation' && type !== 'extendedTextMessage') return;
@@ -245,28 +269,31 @@ async function handleMessage(sock, msg) {
 
     // A brand-new customer who just says hello gets the polished welcome, so the
     // first impression is always professional and consistent.
-    const firstContact = getHistory(jid).length === 0;
+    const firstContact = getHistory(contactJid).length === 0;
     const greetingOnly = /^(as?alam|assalam|salam|aoa|hi|hey|hello|helo|hy|good\s*(morning|evening|afternoon)|kya haal|kaise ho)[\s!.,?]*$/i.test(
       content,
     );
     if (firstContact && greetingOnly) {
       const text = welcomeText();
-      appendHistory(jid, 'user', content);
-      appendHistory(jid, 'assistant', text);
+      appendHistory(contactJid, 'user', content);
+      appendHistory(contactJid, 'assistant', text);
       await delay(300);
       await sock.sendMessage(replyJid, { text }, { quoted: msg });
       log('info', `Welcomed new customer ${replyJid}`);
       return;
     }
 
-    const { reply } = await respond(jid, content, { notifyOwner });
+    const { reply } = await respond(contactJid, content, { notifyOwner, phone });
     await delay(300);
     await sock.sendMessage(replyJid, { text: reply }, { quoted: msg });
     log('info', `Replied to ${replyJid}`);
   } catch (e) {
     log('error', 'Failed to reply', e.message);
-    const friendly =
-      'Sorry, the assistant is not set up correctly right now. Please try again later.';
+    // A rate limit is temporary, not a setup problem. Tell the customer the truth
+    // and keep the conversation open.
+    const friendly = e.rateLimited
+      ? 'Sorry, hamara system is waqt thora busy hai. Please 1 minute baad dobara message karein — main aap ki madad zaroor karunga.'
+      : 'Sorry, I could not reply just now. Please try again in a moment, or contact us directly on +92 320 0199895.';
     await sock.sendMessage(replyJid, { text: friendly }, { quoted: msg }).catch(() => {});
   }
 }

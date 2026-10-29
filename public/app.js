@@ -134,9 +134,10 @@ function renderLeads(customers) {
   el.innerHTML = customers
     .map((c) => {
       const t = c.lastSeen ? new Date(c.lastSeen).toLocaleString() : '';
-      const wa = (c.jid || '').split('@')[0];
+      const number = c.phone || (!c.jid?.endsWith('@lid') ? (c.jid || '').split('@')[0] : '');
       const rows = [
         ['Name', c.name],
+        ['WhatsApp', number],
         ['Business', c.businessName],
         ['Type', c.businessType],
         ['City', c.city],
@@ -146,10 +147,9 @@ function renderLeads(customers) {
         ['Email', c.email],
       ].filter(([, v]) => v);
       const stage = c.stage ? `<span class="badge">${escapeHtml(stageLabel[c.stage] || c.stage)}</span>` : '';
-      return `<div class="log-line info"><span class="t">${t}</span><b>${escapeHtml(c.name || wa || 'Unknown')}</b> ${stage}
+      return `<div class="log-line info"><span class="t">${t}</span><b>${escapeHtml(c.name || number || 'Unknown')}</b> ${stage}
         ${rows.map(([k, v]) => `<div class="kv"><span>${k}</span>${escapeHtml(v)}</div>`).join('')}
-        ${c.summary ? `<div class="kv"><span>Notes</span>${escapeHtml(c.summary)}</div>` : ''}
-        ${wa ? `<div class="kv"><span>WhatsApp</span>${escapeHtml(wa)}</div>` : ''}</div>`;
+        ${c.summary ? `<div class="kv"><span>Notes</span>${escapeHtml(c.summary)}</div>` : ''}</div>`;
     })
     .join('');
 }
