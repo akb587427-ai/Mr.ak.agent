@@ -215,3 +215,22 @@ auth errors) and the dashboard shows a red banner. State is in `GET /api/state` 
 
 A per-model 429/503 is *not* a health failure — that is handled by the existing rotation
 in `llm.js` and `voice.js`. Only a failure that survives rotation trips the alert.
+
+### Provider/key change must clear recorded limits
+
+`llm.js` keeps per-endpoint rate-limit state in a `pace` map keyed by endpoint id, which
+includes the base URL. Changing the provider left the *old* provider's `resetAt` in place,
+so the agent sat out a window that no longer applied — seen live as
+`[llm] waiting 31s for the rate limit window` followed by a 30s request timeout and
+`Could not reach the AI provider`. The app looked broken while a plain `fetch` to the same
+URL returned 200 in under a second. `resetPacing()` now clears the map and the request
+chain, and `/api/config` calls it on every save.
+
+### Keyless provider is a valid configuration
+
+`checkKey()` treated "no API key" as a failure even when the chosen provider is keyless
+(Pollinations). It now only flags a missing key when the provider actually needs one, so
+the keyless fallback does not spam the owner with false alarms.
+
+Note on limits: keyless providers are shared and slow down under load, so Pollinations is
+a text-only stopgap. Voice replies and reliable throughput need a real Gemini key.

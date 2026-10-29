@@ -5,7 +5,7 @@ import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { store, saveConfig, log, clearHistory } from './store.js';
-import { PROVIDERS, resolveEndpoints, chatCompletion, listModels, detectProviderFromKey, splitKeys, endpointSummary } from './llm.js';
+import { PROVIDERS, resolveEndpoints, chatCompletion, listModels, detectProviderFromKey, splitKeys, endpointSummary, resetPacing } from './llm.js';
 import { startWhatsApp, wa, requestPairing, cancelPairing, notifyOwner } from './whatsapp.js';
 import { callStats } from './calls.js';
 import { synthesizeSpeech, voiceReady, ffmpegAvailable, VOICES } from './voice.js';
@@ -156,6 +156,8 @@ app.post('/api/config', (req, res) => {
     }
   }
 
+  // A provider or key change invalidates any limit recorded against the old one.
+  resetPacing();
   saveConfig();
   log('info', 'Settings updated');
   broadcast();
@@ -256,12 +258,12 @@ export function healthState() {
 }
 
 async function checkKey() {
-  if (!splitKeys(store.config.apiKey).length) {
+  const preset = PROVIDERS[store.config.provider] || {};
+  if (!splitKeys(store.config.apiKey).length && !preset.keyless) {
     health.ok = false;
     health.reason = 'No API key saved';
   } else {
     try {
-      const { chatCompletion } = await import('./llm.js');
       await chatCompletion({
         endpoints: resolveEndpoints(store.config),
         messages: [{ role: 'user', content: 'ping' }],

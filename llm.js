@@ -237,6 +237,14 @@ function paceFor(endpoint) {
   return p;
 }
 
+// Limits recorded against the previous provider or key must not carry over to a new
+// one. Without this, switching provider leaves the agent waiting out a window that no
+// longer applies — observed as "waiting 31s" followed by a timeout after a key change.
+export function resetPacing() {
+  pace.clear();
+  chain.current = Promise.resolve();
+}
+
 function parseDuration(value) {
   if (!value) return 0;
   const parts = String(value).match(/(\d+(?:\.\d+)?)(h|ms|m|s)/g) || [];
