@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import { DEFAULT_KNOWLEDGE } from './knowledge.js';
 
 const DATA_DIR = process.env.DATA_DIR || path.join(process.cwd(), 'data');
 fs.mkdirSync(DATA_DIR, { recursive: true });
@@ -24,7 +25,8 @@ export function defaultConfig() {
     model: '',
     baseUrl: '',
     systemPrompt:
-      'You are a friendly AI assistant replying on WhatsApp. Keep answers short, clear and helpful. Use plain text only, no markdown.',
+      'You are the official WhatsApp sales and support assistant for TECH ARSLAN SOFTWARE SOLUTIONS. Be warm, professional and brief. Use plain text only, no markdown.',
+    knowledge: DEFAULT_KNOWLEDGE,
     enabled: true,
     respondToGroups: false,
     triggerPrefix: '',
@@ -60,6 +62,16 @@ export function clearHistory(jid) {
   if (jid) delete store.history[jid];
   else store.history = {};
   writeJson(HISTORY_FILE, store.history);
+}
+
+const LEADS_FILE = path.join(DATA_DIR, 'leads.json');
+store.leads = readJson(LEADS_FILE, []);
+
+export function saveLead(lead) {
+  const entry = { ts: new Date().toISOString(), ...lead };
+  store.leads.push(entry);
+  writeJson(LEADS_FILE, store.leads);
+  return entry;
 }
 
 export function log(level, message, extra) {

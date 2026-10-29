@@ -90,16 +90,27 @@ export async function chatCompletion({ apiKey, baseUrl, model, messages, tools, 
     body.tools = tools;
     body.tool_choice = 'auto';
   }
-  const res = await fetch(`${baseUrl}/chat/completions`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify(body),
-    signal: AbortSignal.timeout(60000),
-  });
-  const text = await res.text();
+
+  let res;
+  let text;
+  // Free tiers (Groq, OpenRouter) rate limit per minute. Retry a few times instead
+  // of dropping the customer's message.
+  for (let attempt = 0; attempt < 3; attempt++) {
+    res = await fetch(`${baseUrl}/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(60000),
+    });
+    text = await res.text();
+    if (res.status !== 429) break;
+    const wait = Math.min(Number(res.headers.get('retry-after')) * 1000 || 0, 8000) || 4000 * (attempt + 1);
+    if (attempt < 2) await new Promise((r) => setTimeout(r, wait));
+  }
+
   let data;
   try {
     data = JSON.parse(text);
@@ -108,6 +119,9 @@ export async function chatCompletion({ apiKey, baseUrl, model, messages, tools, 
   }
   if (!res.ok) {
     const msg = data?.error?.message || data?.message || text.slice(0, 300);
+    if (res.status === 429) {
+      throw new Error('The AI provider is rate limiting us right now. Please try again in a few seconds.');
+    }
     throw new Error(`LLM error ${res.status}: ${msg}`);
   }
   const choice = data.choices?.[0]?.message;

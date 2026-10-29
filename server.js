@@ -51,10 +51,12 @@ function state() {
 
 app.get('/api/state', (_req, res) => res.json(state()));
 
+app.get('/api/leads', (_req, res) => res.json({ ok: true, leads: store.leads.slice().reverse() }));
+
 app.post('/api/config', (req, res) => {
   const b = req.body || {};
   const c = store.config;
-  for (const k of ['provider', 'model', 'baseUrl', 'systemPrompt', 'triggerPrefix']) {
+  for (const k of ['provider', 'model', 'baseUrl', 'systemPrompt', 'triggerPrefix', 'knowledge']) {
     if (typeof b[k] === 'string') c[k] = b[k].trim();
   }
   for (const k of ['enabled', 'respondToGroups']) {

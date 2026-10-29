@@ -81,6 +81,7 @@ function applyConfig(cfg) {
     $('model').value = cfg.model || '';
     $('baseUrl').value = cfg.baseUrl || '';
     $('systemPrompt').value = cfg.systemPrompt || '';
+    $('knowledge').value = cfg.knowledge || '';
     $('triggerPrefix').value = cfg.triggerPrefix || '';
     $('enabled').checked = !!cfg.enabled;
     $('respondToGroups').checked = !!cfg.respondToGroups;
@@ -112,6 +113,29 @@ function renderLogs(logs) {
 
 function escapeHtml(s) {
   return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+function renderLeads(leads) {
+  const el = $('leads');
+  if (!leads.length) {
+    el.innerHTML = '<div class="log-line">No leads yet. They appear here as the agent collects customer details.</div>';
+    return;
+  }
+  el.innerHTML = leads
+    .map((l) => {
+      const t = new Date(l.ts).toLocaleString();
+      const parts = [l.businessName, l.businessType, l.city, l.product].filter(Boolean).join(' · ');
+      const wa = (l.whatsapp || '').split('@')[0];
+      return `<div class="log-line info"><span class="t">${t}</span><b>${escapeHtml(l.name)}</b>${parts ? ' — ' + escapeHtml(parts) : ''}${wa ? ' — ' + escapeHtml(wa) : ''}${l.notes ? '<br>' + escapeHtml(l.notes) : ''}</div>`;
+    })
+    .join('');
+}
+
+async function loadLeads() {
+  try {
+    const r = await fetch('/api/leads').then((x) => x.json());
+    renderLeads(r.leads || []);
+  } catch {}
 }
 
 function applyState(data) {
@@ -196,6 +220,7 @@ $('saveBtn').addEventListener('click', async () => {
     model: $('model').value,
     baseUrl: $('baseUrl').value,
     systemPrompt: $('systemPrompt').value,
+    knowledge: $('knowledge').value,
     triggerPrefix: $('triggerPrefix').value,
     enabled: $('enabled').checked,
     respondToGroups: $('respondToGroups').checked,
@@ -253,6 +278,7 @@ $('cancelPairBtn').addEventListener('click', async () => {
 });
 
 $('restartBtn').addEventListener('click', () => post('/api/restart'));
+$('refreshLeadsBtn').addEventListener('click', loadLeads);
 $('logoutBtn').addEventListener('click', async () => {
   if (confirm('Log out of WhatsApp and unlink this device?')) await post('/api/logout');
 });
@@ -264,3 +290,5 @@ $('clearHistoryBtn').addEventListener('click', async () => {
 });
 
 connectWs();
+loadLeads();
+setInterval(loadLeads, 15000);

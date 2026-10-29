@@ -1,3 +1,5 @@
+import { saveLead, log } from './store.js';
+
 const UA =
   'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36';
 
@@ -93,10 +95,43 @@ export const toolDefinitions = [
       parameters: { type: 'object', properties: {} },
     },
   },
+  {
+    type: 'function',
+    function: {
+      name: 'save_lead',
+      description:
+        'Save a sales lead once the customer has shared their details. Call this when you have at least their name and what they need, then tell them the team will contact them.',
+      parameters: {
+        type: 'object',
+        properties: {
+          name: { type: 'string', description: 'Customer name.' },
+          business_name: { type: 'string', description: 'Name of their business, if given.' },
+          city: { type: 'string', description: 'Their city, if given.' },
+          product: { type: 'string', description: 'Which TECH ARSLAN product they are interested in.' },
+          business_type: { type: 'string', description: 'What kind of business they run.' },
+          notes: { type: 'string', description: 'Anything else useful, e.g. budget or timeline.' },
+        },
+        required: ['name'],
+      },
+    },
+  },
 ];
 
-export async function runTool(name, args) {
+export async function runTool(name, args, jid) {
   if (name === 'web_search') return webSearch(args?.query || '');
   if (name === 'current_time') return new Date().toString();
+  if (name === 'save_lead') {
+    const lead = saveLead({
+      name: args?.name || '',
+      businessName: args?.business_name || '',
+      city: args?.city || '',
+      product: args?.product || '',
+      businessType: args?.business_type || '',
+      notes: args?.notes || '',
+      whatsapp: jid || '',
+    });
+    log('info', `Lead saved: ${lead.name} (${lead.product || 'product not set'})`);
+    return 'Lead saved. Thank the customer and tell them the TECH ARSLAN team will contact them on this WhatsApp number shortly.';
+  }
   return `Unknown tool: ${name}`;
 }

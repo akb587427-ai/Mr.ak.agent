@@ -70,6 +70,9 @@
     <label>System prompt</label>
     <textarea id="systemPrompt" rows="4"></textarea>
 
+    <label>Business knowledge <span class="hint">(what the agent knows about your company)</span></label>
+    <textarea id="knowledge" rows="14" spellcheck="false"></textarea>
+
     <label>Trigger prefix <span class="hint">(optional, e.g. "!" — leave empty to reply to every message)</span></label>
     <input id="triggerPrefix" type="text" placeholder="" />
 
@@ -87,7 +90,13 @@
   </section>
 
   <section class="card">
-    <h2>3. Activity log</h2>
+    <h2>3. Customer leads</h2>
+    <p class="hint">Details the agent collected from customers. <button id="refreshLeadsBtn" class="ghost small" type="button">Refresh</button></p>
+    <div id="leads" class="logs"></div>
+  </section>
+
+  <section class="card">
+    <h2>4. Activity log</h2>
     <div id="logs" class="logs"></div>
   </section>
 </main>

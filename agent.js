@@ -6,8 +6,9 @@ const MAX_TOOL_ROUNDS = 3;
 
 export async function respond(jid, userText) {
   const config = store.config;
+  const system = [config.systemPrompt, config.knowledge].filter(Boolean).join('\n\n');
   const messages = [
-    { role: 'system', content: config.systemPrompt },
+    { role: 'system', content: system },
     ...getHistory(jid),
     { role: 'user', content: userText },
   ];
@@ -26,7 +27,7 @@ export async function respond(jid, userText) {
         }
         let result;
         try {
-          result = await runTool(call.function.name, args);
+          result = await runTool(call.function.name, args, jid);
         } catch (e) {
           result = `Tool error: ${e.message}`;
         }
