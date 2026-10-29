@@ -9,7 +9,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { store, log } from './store.js';
-import { splitKeys } from './llm.js';
+import { splitKeys, chatCompletion, resolveEndpoints } from './llm.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -213,7 +213,10 @@ async function transcribeGemini(buffer, mime, key) {
 }
 
 async function transcribeOpenAI(buffer, mime, key) {
-  const base = (store.config.baseUrl || 'https://api.openai.com/v1').replace(/\/$/, '');
+  // Use the configured endpoint for this provider; defaulting to OpenAI's URL sent the
+  // Groq key to the wrong service. resolveEndpoints already knows the right base URL.
+  const [endpoint] = resolveEndpoints(store.config);
+  const base = (endpoint?.baseUrl || store.config.baseUrl || 'https://api.openai.com/v1').replace(/\/$/, '');
   // Groq hosts Whisper too, under its own model name; pointing "whisper-1" at Groq
   // would 404, so the model follows the provider.
   const provider = store.config.provider;
@@ -319,6 +322,7 @@ export async function synthesizeSpeech(text) {
 // edge-tts streams MP3; ffmpeg re-wraps it as the OGG/Opus container WhatsApp expects
 // for a voice note. Free, keyless, and unaffected by any API quota.
 async function synthesizeEdge(text, voice) {
+  const speakable = await toSpeakableScript(text, voice);
   return withTempDir(async (dir) => {
     const mp3 = path.join(dir, 'speech.mp3');
     const ogg = path.join(dir, 'speech.ogg');
@@ -327,7 +331,7 @@ async function synthesizeEdge(text, voice) {
     let lastError = null;
     for (let attempt = 0; attempt < 2; attempt++) {
       try {
-        await run('python3', ['-m', 'edge_tts', '--voice', voice, '--text', text, '--write-media', mp3], 60000);
+        await run('python3', ['-m', 'edge_tts', '--voice', voice, '--text', speakable, '--write-media', mp3], 60000);
         lastError = null;
         break;
       } catch (e) {
@@ -339,6 +343,47 @@ async function synthesizeEdge(text, voice) {
     await run('ffmpeg', ['-y', '-i', mp3, '-c:a', 'libopus', '-b:a', '32k', '-application', 'voip', ogg]);
     return fs.readFileSync(ogg);
   });
+}
+
+const URDU_RE = /[\u0600-\u06FF]/;
+const DEVA_RE = /[\u0900-\u097F]/;
+
+function targetScript(voice) {
+  if (/^(ur|fa|ar)-/i.test(voice)) return { re: URDU_RE, script: 'Urdu in Arabic script, as written in Pakistan' };
+  if (/^(hi|mr|ne)-/i.test(voice)) return { re: DEVA_RE, script: 'Devanagari script' };
+  return null;
+}
+
+// These voices read their own script, not Latin letters. Roman Urdu such as "pharmacy ka
+// software 45000 rupay hai" came out as "फार्मसी का सौफ्ट्वर" — audible garbage, and the
+// owner reported exactly that. Transliterate first so the voice reads real Urdu.
+async function toSpeakableScript(text, voice) {
+  const target = targetScript(voice);
+  if (!target || target.re.test(text)) return text;
+  if (!splitKeys(store.config.apiKey).length) return text;
+  try {
+    const choice = await chatCompletion({
+      endpoints: resolveEndpoints(store.config),
+      messages: [
+        {
+          role: 'system',
+          content:
+            `Transliterate the user's text into ${target.script}. Keep numbers, prices, ` +
+            'brand names and English words as they are. Reply with only the transliterated ' +
+            'text and nothing else.',
+        },
+        { role: 'user', content: text },
+      ],
+      temperature: 0,
+    });
+    const out = (choice.content || '').trim();
+    // Only trust the conversion if it actually produced the expected script.
+    if (out && target.re.test(out)) return out;
+    log('warn', 'Transliteration did not return the expected script; speaking the original');
+  } catch (e) {
+    log('warn', `Could not transliterate for speech: ${String(e.message).slice(0, 80)}`);
+  }
+  return text;
 }
 
 export function ffmpegAvailable() {

@@ -264,3 +264,24 @@ notes. It used to reply "aap ka voice message samajh nahi aaya", which blames th
 It now says plainly that voice needs setting up and asks for text. `sttReady()` (key
 present) gates transcription while `voiceReady()` (key or edge-tts) gates speaking, so the
 two capabilities are checked separately.
+
+### Voices read their own script (the garbled-voice bug)
+
+The owner heard the agent's voice and could not understand a word. The voice itself was
+fine; the text was Roman Urdu ("pharmacy ka software 45000 rupay hai") being fed to an
+Urdu voice, which read the Latin letters as Devanagari: "फार्मसी का सौफ्ट्वर". A round trip
+through Whisper proved it — Roman text came back as Hindi, real Urdu script came back
+correct.
+
+`synthesizeEdge` now transliterates into the voice's own script before speaking: Urdu for
+`ur-*` voices, Devanagari for `hi-*`. Numbers, prices and brand names are kept. The
+conversion is only trusted when the reply actually contains the expected script, and a
+failure falls back to the original text. Verified end to end: the same sentence now comes
+back from Whisper as proper Urdu.
+
+### Speech endpoints follow the provider
+
+`transcribeOpenAI` and `synthesizeOpenAI` defaulted to `https://api.openai.com/v1` whenever
+`baseUrl` was empty, so a Groq key was sent to OpenAI and came back `401 Incorrect API key`.
+Both now take the base URL from `resolveEndpoints`, so the key always reaches the provider
+it belongs to.
