@@ -120,6 +120,22 @@ function joinText(data) {
 
 // --- speech to text ---------------------------------------------------------
 
+// Chat models that accept audio input, tried in order. The free tier returns 503
+// ("high demand") on any single model fairly often, so relying on one model made the
+// agent claim it could not understand a voice note. Rotating across them, and
+// retrying, keeps transcription working.
+const STT_MODELS = [
+  'gemini-3.1-flash-lite',
+  'gemini-3.1-flash-lite-preview',
+  'gemini-3-flash-preview',
+  'gemini-flash-lite-latest',
+];
+const STT_PROMPT =
+  'Transcribe this WhatsApp voice message exactly as spoken. The speaker may use Urdu, ' +
+  'Roman Urdu, English or a mix. Write the transcription in the same language and script ' +
+  'the speaker used, keeping Urdu words in Roman letters when they are spoken that way. ' +
+  'Reply with only the transcription, no commentary.';
+
 async function transcribeGemini(buffer, mime, key) {
   let audio = buffer;
   let mimeType = mime || 'audio/ogg';
@@ -134,18 +150,31 @@ async function transcribeGemini(buffer, mime, key) {
     });
     mimeType = 'audio/ogg';
   }
-  const model = store.config.model || 'gemini-2.5-flash';
-  const data = await geminiGenerate(model, {
+  const body = {
     contents: [
-      {
-        parts: [
-          { text: 'Transcribe this WhatsApp voice message. Reply with only the transcription, no commentary.' },
-          { inlineData: { mimeType, data: audio.toString('base64') } },
-        ],
-      },
+      { parts: [{ text: STT_PROMPT }, { inlineData: { mimeType, data: audio.toString('base64') } }] },
     ],
-  }, key);
-  return joinText(data);
+  };
+
+  let lastError = null;
+  for (let round = 0; round < 2; round++) {
+    for (const model of STT_MODELS) {
+      try {
+        const text = joinText(await geminiGenerate(model, body, key));
+        if (text) return text;
+        lastError = new Error('Transcription came back empty');
+      } catch (e) {
+        lastError = e;
+        // Only a transient fault is worth another model or another round.
+        if (e.status === 503 || e.status === 429) continue;
+        throw e;
+      }
+    }
+    // Every model is busy. Wait briefly before the second pass instead of answering
+    // the customer with a failure.
+    if (round === 0) await new Promise((r) => setTimeout(r, 2500));
+  }
+  throw lastError || new Error('Could not transcribe the voice note');
 }
 
 async function transcribeOpenAI(buffer, mime, key) {

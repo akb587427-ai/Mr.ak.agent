@@ -292,15 +292,32 @@ async function handleMessage(sock, msg) {
       log('warn', `Voice note from ${jid} ignored — no API key configured`);
       return;
     }
+    let buffer;
+    const audioMime = msg.message.audioMessage?.mimetype;
     try {
-      const buffer = await downloadMediaMessage(msg, 'buffer', {}, { logger, reuploadRequest: sock.updateMediaMessage });
-      text = (await transcribeAudio(buffer, msg.message.audioMessage?.mimetype)).trim();
+      buffer = await downloadMediaMessage(msg, 'buffer', {}, { logger, reuploadRequest: sock.updateMediaMessage });
+    } catch (e) {
+      log('error', 'Could not download voice note', e.message);
+      return;
+    }
+    try {
+      text = (await transcribeAudio(buffer, audioMime)).trim();
       wasVoice = true;
       log('info', `Transcribed voice note from ${jid}: ${text.slice(0, 80)}`);
     } catch (e) {
-      log('error', 'Could not transcribe voice note', e.message);
-      await sock.sendMessage(replyJid, { text: 'Sorry, aap ka voice message samajh nahi aaya. Please dobara bhejein ya text mein likh dein.' }).catch(() => {});
-      return;
+      // A 503 from the speech models is transient. Pause and try once more before
+      // telling the customer anything, since a retry usually succeeds.
+      log('warn', 'Transcription failed, retrying once', e.message);
+      await delay(4000);
+      try {
+        text = (await transcribeAudio(buffer, audioMime)).trim();
+        wasVoice = true;
+        log('info', `Transcribed voice note from ${jid} on retry: ${text.slice(0, 80)}`);
+      } catch (e2) {
+        log('error', 'Could not transcribe voice note', e2.message);
+        await sock.sendMessage(replyJid, { text: 'Sorry, aap ka voice message samajh nahi aaya. Please dobara bhejein ya text mein likh dein.' }).catch(() => {});
+        return;
+      }
     }
     if (!text) return;
   } else {

@@ -177,3 +177,26 @@ from the dashboard "Calls" section. `POST /api/test-voice` generates a note and,
 - **Key note:** the dashboard's "N keys" figure is the number of *endpoints* (models),
   not API keys. The current box has a single Gemini key, so per-model rotation is what
   provides headroom.
+
+### Transcription reliability (fix)
+
+Symptom: the agent answered real customer voice notes with "Sorry, aap ka voice
+message samajh nahi aaya" over and over. Cause: `transcribeGemini` used only
+`store.config.model`, and Gemini's free tier returns **503 "high demand"** on a single
+chat model often enough that most voice notes failed. The earlier round-trip test
+passed only because it happened to run between spikes.
+
+Fix, in `voice.js`:
+- `STT_MODELS` walks `gemini-3.1-flash-lite`, `gemini-3.1-flash-lite-preview`,
+  `gemini-3-flash-preview`, `gemini-flash-lite-latest`, retrying the whole list twice
+  with a short pause, so a transient 503 no longer fails the customer.
+- A transcription prompt that asks for the speaker's own language and script. Urdu
+  speech now comes back in Roman Urdu ("bhai mujhe pharmacy ka software chahiye")
+  instead of Devanagari, which reads far better to the owner and to the model.
+- `whatsapp.js` separates the media download from transcription and retries once after
+  4s before ever telling the customer it failed.
+
+Verified: 5/5 consecutive transcriptions succeeded, and a full customer-speaks ->
+agent-replies-in-male-voice run produced a valid OGG/Opus note, with the speech model
+rotation visibly falling through from `gemini-3.8-flash-tts` (429) to
+`gemini-3.8-flash-lite-tts`.
