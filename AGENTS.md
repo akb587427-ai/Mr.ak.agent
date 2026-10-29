@@ -234,3 +234,25 @@ the keyless fallback does not spam the owner with false alarms.
 
 Note on limits: keyless providers are shared and slow down under load, so Pollinations is
 a text-only stopgap. Voice replies and reliable throughput need a real Gemini key.
+
+### Free keyless voice output (edge-tts)
+
+Gemini TTS needs a working key and meters speech quota per model per day, so a missing or
+exhausted key used to silence voice replies entirely. `voice.js` now also speaks through
+Microsoft Edge's read-aloud voices via the `edge-tts` utility: free, unlimited, no key,
+no quota. Install with `pip install --break-system-packages edge-tts`.
+
+- Voice ids prefixed `edge:` select these voices (`edge:ur-PK-AsadNeural` is male Urdu).
+- The default voice is `edge:ur-PK-AsadNeural`, so voice works with no key at all.
+- A Gemini voice that fails falls back to the free Edge male voice rather than failing.
+- `voiceReady()` is true when a key exists **or** edge-tts is installed, so incoming
+  voice notes are not ignored just because no key is configured.
+
+Verified: 4/4 free voices produced valid OGG/Opus voice notes with no key configured.
+
+### Whisper model depends on the provider
+
+Groq serves Whisper as `whisper-large-v3-turbo`, not `whisper-1`; sending OpenAI's model
+name to Groq 404s. `transcribeOpenAI` now picks the model from the configured provider.
+Groq's free tier is the cheapest way to transcribe: 2K requests/day and 28,800 audio
+seconds/day (8 hours of audio) at no cost.

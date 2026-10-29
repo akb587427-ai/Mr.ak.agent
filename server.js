@@ -8,7 +8,7 @@ import { store, saveConfig, log, clearHistory } from './store.js';
 import { PROVIDERS, resolveEndpoints, chatCompletion, listModels, detectProviderFromKey, splitKeys, endpointSummary, resetPacing } from './llm.js';
 import { startWhatsApp, wa, requestPairing, cancelPairing, notifyOwner } from './whatsapp.js';
 import { callStats } from './calls.js';
-import { synthesizeSpeech, voiceReady, ffmpegAvailable, VOICES } from './voice.js';
+import { synthesizeSpeech, voiceReady, ffmpegAvailable, VOICES, edgeTtsAvailable } from './voice.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT || 12000);
@@ -297,6 +297,8 @@ async function checkKey() {
 
 setInterval(checkKey, 10 * 60 * 1000);
 setTimeout(checkKey, 45 * 1000);
+// The free Edge voice is the keyless fallback, so confirm it is installed at boot.
+edgeTtsAvailable().then((ok) => log(ok ? 'info' : 'warn', ok ? 'Free Edge voice available (no key needed)' : 'edge-tts not installed — voice replies need an API key'));
 
 server.listen(PORT, '0.0.0.0', () => {
   log('info', `Web app listening on port ${PORT}`);

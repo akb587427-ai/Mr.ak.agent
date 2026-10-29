@@ -26,18 +26,31 @@ const TTS_MODELS = [
 ].filter(Boolean);
 // Curated Gemini prebuilt voices. "Charon" is a deep male voice and is the default so
 // the assistant sounds like a male representative out of the box.
+// The "edge:" entries are Microsoft Edge's read-aloud voices, reached through the free
+// edge-tts utility. They need no API key and no quota, which keeps the agent speaking
+// even when the Gemini key is missing or exhausted.
 export const VOICES = [
-  { id: 'Charon', label: 'Charon — male, deep and calm' },
-  { id: 'Puck', label: 'Puck — male, upbeat' },
-  { id: 'Orus', label: 'Orus — male, firm' },
-  { id: 'Iapetus', label: 'Iapetus — male, clear' },
-  { id: 'Fenrir', label: 'Fenrir — male, strong' },
-  { id: 'Kore', label: 'Kore — female, neutral' },
-  { id: 'Aoede', label: 'Aoede — female, light' },
-  { id: 'Leda', label: 'Leda — female, youthful' },
-  { id: 'Zephyr', label: 'Zephyr — female, bright' },
+  { id: 'Charon', label: 'Charon — male, deep and calm (Gemini)' },
+  { id: 'Puck', label: 'Puck — male, upbeat (Gemini)' },
+  { id: 'Orus', label: 'Orus — male, firm (Gemini)' },
+  { id: 'Iapetus', label: 'Iapetus — male, clear (Gemini)' },
+  { id: 'Fenrir', label: 'Fenrir — male, strong (Gemini)' },
+  { id: 'Kore', label: 'Kore — female, neutral (Gemini)' },
+  { id: 'Aoede', label: 'Aoede — female, light (Gemini)' },
+  { id: 'Leda', label: 'Leda — female, youthful (Gemini)' },
+  { id: 'Zephyr', label: 'Zephyr — female, bright (Gemini)' },
+  { id: 'edge:ur-PK-AsadNeural', label: 'Asad — male, Urdu (free, unlimited)' },
+  { id: 'edge:hi-IN-MadhurNeural', label: 'Madhur — male, Hindi (free, unlimited)' },
+  { id: 'edge:en-US-GuyNeural', label: 'Guy — male, English (free, unlimited)' },
+  { id: 'edge:ur-PK-UzmaNeural', label: 'Uzma — female, Urdu (free, unlimited)' },
 ];
-const DEFAULT_VOICE = 'Charon';
+// The default is the free, keyless Urdu male voice: it costs nothing, has no quota,
+// and keeps working even when no API key is configured. Gemini voices remain available
+// in the picker for anyone who prefers them.
+const DEFAULT_VOICE = 'edge:ur-PK-AsadNeural';
+// Used when the chosen Gemini voice cannot be produced — a missing or exhausted key
+// should still leave the customer with a male voice reply, not silence.
+const FALLBACK_EDGE_VOICE = 'ur-PK-AsadNeural';
 
 function selectedVoice() {
   const v = store.config.ttsVoice || process.env.TTS_VOICE || DEFAULT_VOICE;
@@ -47,8 +60,24 @@ function selectedVoice() {
 // quick and the upload small.
 const MAX_TTS_CHARS = 1200;
 
+// Cached because state() is synchronous; refreshed at startup and after config changes.
+let edgeTtsUsable = true;
+
 export function voiceReady() {
-  return splitKeys(store.config.apiKey).length > 0;
+  // A reply voice is always possible: the free Edge voice needs no key and is used
+  // whenever a Gemini voice is unavailable. So voice is ready as long as either a key
+  // exists or edge-tts is installed.
+  return splitKeys(store.config.apiKey).length > 0 || edgeTtsUsable;
+}
+
+export async function edgeTtsAvailable() {
+  try {
+    await run('python3', ['-c', 'import edge_tts'], 20000);
+    edgeTtsUsable = true;
+  } catch {
+    edgeTtsUsable = false;
+  }
+  return edgeTtsUsable;
 }
 
 function firstKey() {
@@ -179,9 +208,13 @@ async function transcribeGemini(buffer, mime, key) {
 
 async function transcribeOpenAI(buffer, mime, key) {
   const base = (store.config.baseUrl || 'https://api.openai.com/v1').replace(/\/$/, '');
+  // Groq hosts Whisper too, under its own model name; pointing "whisper-1" at Groq
+  // would 404, so the model follows the provider.
+  const provider = store.config.provider;
+  const defaultModel = provider === 'groq' ? 'whisper-large-v3-turbo' : 'whisper-1';
   const form = new FormData();
   form.append('file', new Blob([buffer], { type: mime || 'audio/ogg' }), 'voice.ogg');
-  form.append('model', process.env.STT_MODEL || 'whisper-1');
+  form.append('model', process.env.STT_MODEL || defaultModel);
   const res = await fetch(`${base}/audio/transcriptions`, {
     method: 'POST',
     headers: { authorization: `Bearer ${key}` },
@@ -257,10 +290,49 @@ async function synthesizeOpenAI(text, key) {
 }
 
 export async function synthesizeSpeech(text) {
-  if (!splitKeys(store.config.apiKey).length) throw new Error('No API key configured');
   const clean = String(text || '').replace(/\s+/g, ' ').trim().slice(0, MAX_TTS_CHARS);
   if (!clean) throw new Error('Nothing to speak');
-  return isGemini() ? withKeys((key) => synthesizeGemini(clean, key)) : synthesizeOpenAI(clean, firstKey());
+  const voice = selectedVoice();
+
+  // The keyless Edge voice is used when it was chosen, and as the fallback when a
+  // Gemini voice cannot be produced, so a missing key never silences the reply.
+  if (voice.startsWith('edge:')) {
+    return synthesizeEdge(clean, voice.slice(5));
+  }
+  if (!splitKeys(store.config.apiKey).length) {
+    return synthesizeEdge(clean, FALLBACK_EDGE_VOICE);
+  }
+  try {
+    return await (isGemini() ? withKeys((key) => synthesizeGemini(clean, key)) : synthesizeOpenAI(clean, firstKey()));
+  } catch (e) {
+    log('warn', `Gemini voice failed (${String(e.message).slice(0, 80)}), using the free Edge voice`);
+    return synthesizeEdge(clean, FALLBACK_EDGE_VOICE);
+  }
+}
+
+// edge-tts streams MP3; ffmpeg re-wraps it as the OGG/Opus container WhatsApp expects
+// for a voice note. Free, keyless, and unaffected by any API quota.
+async function synthesizeEdge(text, voice) {
+  return withTempDir(async (dir) => {
+    const mp3 = path.join(dir, 'speech.mp3');
+    const ogg = path.join(dir, 'speech.ogg');
+    // The service occasionally drops a request, so give it one more try before the
+    // customer is left without a reply.
+    let lastError = null;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        await run('python3', ['-m', 'edge_tts', '--voice', voice, '--text', text, '--write-media', mp3], 60000);
+        lastError = null;
+        break;
+      } catch (e) {
+        lastError = e;
+        if (attempt === 0) await new Promise((r) => setTimeout(r, 1500));
+      }
+    }
+    if (lastError) throw new Error(`Edge TTS failed: ${String(lastError.message).slice(0, 200)}`);
+    await run('ffmpeg', ['-y', '-i', mp3, '-c:a', 'libopus', '-b:a', '32k', '-application', 'voip', ogg]);
+    return fs.readFileSync(ogg);
+  });
 }
 
 export function ffmpegAvailable() {

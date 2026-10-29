@@ -78,7 +78,7 @@ function fillProviders() {
 function fillVoices(voices) {
   const sel = $('ttsVoice');
   sel.innerHTML = voices.map((v) => `<option value="${v.id}">${v.label}</option>`).join('');
-  sel.value = 'Charon';
+  sel.value = 'edge:ur-PK-AsadNeural';
 }
 
 // A dead API key is invisible in chat: the customer just gets silence. Surface it
