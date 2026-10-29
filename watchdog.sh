@@ -13,6 +13,14 @@ CHECK_INTERVAL="${CHECK_INTERVAL:-30}"
 # How many consecutive bad checks before a restart. The app is allowed to be briefly
 # unwell (a deploy, a WhatsApp reconnect) without being killed for it.
 FAIL_THRESHOLD="${FAIL_THRESHOLD:-4}"
+
+# The free voice engine is a Python package, not an npm one, so it is not installed by
+# npm ci. Install it here once so voice replies work on a fresh machine too.
+if ! python3 -c 'import edge_tts' 2>/dev/null; then
+  echo "[watchdog] installing the free voice engine"
+  bash setup-voice.sh >> logs/voice-setup.log 2>&1 \
+    || echo "[watchdog] voice setup failed; voice replies will need an API key"
+fi
 # A restart that happens faster than this counts as a crash loop, and the delay grows
 # so a permanently broken build does not spin the CPU forever.
 MIN_UPTIME_BEFORE_TRUST="${MIN_UPTIME_BEFORE_TRUST:-60}"

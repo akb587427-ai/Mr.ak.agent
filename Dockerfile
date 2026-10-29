@@ -3,8 +3,10 @@ FROM node:24-bookworm-slim
 # curl, procps (pgrep/pkill), iproute2 (ss) and tini are what the watchdog needs:
 # the first three to judge health and to stop a wedged process, the last to reap the
 # processes it restarts. The slim image ships none of them.
+# ffmpeg converts speech to the OGG/Opus container WhatsApp plays as a voice note, and
+# python3 with edge-tts produces the free, keyless voice itself.
 RUN apt-get update \
- && apt-get install -y --no-install-recommends curl procps iproute2 tini ca-certificates \
+ && apt-get install -y --no-install-recommends curl procps iproute2 tini ca-certificates ffmpeg python3 python3-pip \
  && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -14,6 +16,10 @@ COPY package.json package-lock.json ./
 RUN npm ci --omit=dev
 
 COPY . .
+
+# The image marks its Python as externally managed, so setup-voice.sh installs edge-tts
+# with the override that layout expects.
+RUN bash setup-voice.sh
 
 # The WhatsApp session, config and chat history have to outlive a redeploy, so they
 # are read from a mounted volume instead of the container filesystem. Both variables

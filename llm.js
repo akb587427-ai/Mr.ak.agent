@@ -1,3 +1,5 @@
+import { log } from './store.js';
+
 export const PROVIDERS = {
   pollinations: {
     label: 'Pollinations (free, no key needed)',

@@ -295,3 +295,19 @@ question could therefore produce a blank reply, and the transliteration for voic
 failed. `chatCompletion` now retries once with a larger budget when the content is empty
 but reasoning is present, accepts a `maxTokens` override, and the transliteration call asks
 for 2000 tokens. Verified: a 179-character question now returns a full 1489-character reply.
+
+### Missing `log` import broke every reply
+
+The reasoning-model retry called `log(...)` inside `llm.js`, which never imported it. The
+`ReferenceError: log is not defined` was thrown from inside the catch block that handles
+failures, so it surfaced as the customer-facing "Sorry, I could not reply just now"
+message and no customer could be answered. `llm.js` now imports `log` from `store.js`
+(no cycle: store.js does not import llm.js). `npm run smoke` loads every module so a
+missing import fails loudly instead of only under a customer's message.
+
+### Voice engine is installed by the image, not by hand
+
+`edge-tts` is a Python package, so `npm ci` never installed it and voice only worked on a
+machine where it had been added manually. `setup-voice.sh` installs it, `watchdog.sh` runs
+that script at startup, and the `Dockerfile` installs python3, pip and ffmpeg and calls the
+script while building. A fresh machine now speaks without any manual step.
