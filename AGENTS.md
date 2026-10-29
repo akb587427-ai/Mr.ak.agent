@@ -50,3 +50,19 @@ user-supplied OpenAI-compatible LLM.
   writes, even though the API reports `push: true`.
 - `railway.json`, `Dockerfile` and `.dockerignore` are the deploy files; the service
   must have a Volume at `/data` or a redeploy logs the user out of WhatsApp.
+
+## Hosting search results (checked the live pages, 2026-10-29)
+- **Railway**: signup is disabled for new accounts ("Sign ups are currently disabled").
+- **Northflank**: advertises "Sandbox Free, no card needed", but creating a service fails
+  with HTTP 409 "Please complete your account by adding a default payment method". Its
+  cheapest deployment plan is nf-compute-10 at $2.70/month.
+- **alwaysdata**: the 0 EUR plan is real, but always-on daemons (Advanced > Services) are
+  paid-plan only, so the free plan cannot keep the agent running unattended.
+- **Render Free**: no card, but a free web service spins down after 15 minutes without
+  inbound traffic and free services cannot attach a persistent disk, so the WhatsApp
+  session would be lost on every spin-down. Not usable for this agent.
+- **Back4app Containers**: free plan, "no credit card required", builds a Dockerfile from
+  GitHub. The most promising remaining option; needs a browser signup.
+- The sandbox public URL (`https://work-1-*.prod-runtime.all-hands.dev/`) is live and the
+  agent is reachable there, but the sandbox stops the machine at will, so it is not the
+  durable host the task asked for.
