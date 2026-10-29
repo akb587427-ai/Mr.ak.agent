@@ -41,6 +41,20 @@ export const store = {
   logs: [],
 };
 
+// On a fresh host the volume is empty, so allow the first boot to be seeded from the
+// environment. Anything already saved wins, because the dashboard writes the same
+// fields and a redeploy must not overwrite a key the user set there.
+let seeded = false;
+if (!store.config.apiKey && process.env.LLM_API_KEY) {
+  store.config.apiKey = process.env.LLM_API_KEY.trim();
+  seeded = true;
+}
+if (!store.config.ownerNumber && process.env.OWNER_NUMBER) {
+  store.config.ownerNumber = process.env.OWNER_NUMBER.trim();
+  seeded = true;
+}
+if (seeded) writeJson(CONFIG_FILE, store.config);
+
 const CUSTOMERS_FILE = path.join(DATA_DIR, 'customers.json');
 store.customers = readJson(CUSTOMERS_FILE, {});
 

@@ -77,6 +77,42 @@ On this machine there is no systemd or cron, so the autostart hook in `~/.bashrc
 `~/.profile` re-launches the watchdog whenever a shell starts, which covers a
 container restart. Logs are written to `logs/server.log` and `logs/watchdog.log`.
 
+## Deploy to a host (Railway and similar)
+
+The sandbox this was built in stops the whole machine at will, and a non-interactive
+shell never sources `~/.bashrc`, so the autostart hook cannot be relied on there. A
+hosted container is the durable option. `Dockerfile`, `railway.json` and
+`.dockerignore` are already in the repo.
+
+On Railway:
+
+1. Push this repo to GitHub, then in Railway choose **New Project -> Deploy from
+   GitHub repo**. Railway reads `railway.json` and builds the Dockerfile.
+2. Add a **Volume** to the service and mount it at `/data`. The image already sets
+   `DATA_DIR=/data` and `AUTH_DIR=/data/auth`, so the WhatsApp session, the config and
+   the chat history survive every redeploy. Without the volume a redeploy logs you out
+   of WhatsApp and you must scan the QR again.
+3. In **Variables**, set `LLM_API_KEY` and `OWNER_NUMBER`. These only seed the first
+   boot; once the dashboard saves them, the volume copy wins and the variables can be
+   removed.
+4. Under **Settings -> Networking**, press **Generate Domain**. That URL is public and
+   stable, unlike the sandbox one.
+5. Open the URL, scan the QR once, and the agent is live.
+
+Notes for this host:
+
+- Do not enable **Serverless / App Sleep**. It puts the service to sleep after ten
+  minutes with no outbound traffic. A WhatsApp connection is a long-lived socket, so
+  the service must stay awake to receive messages.
+- The free plan caps restarts at ten, so the watchdog is doing the real work of
+  keeping the process alive; the platform policy only covers the watchdog itself
+  exiting.
+- `railway.json` points the healthcheck at `/api/state`, which answers `200` once the
+  web app is up. A healthcheck only runs at deploy time, not continuously.
+
+Any Docker host works the same way: `docker build -t wa-agent .` then
+`docker run -p 12000:12000 -v wa-data:/data -e LLM_API_KEY=... -e OWNER_NUMBER=... wa-agent`.
+
 Open the web page, then:
 
 1. Link your WhatsApp in one of two ways:

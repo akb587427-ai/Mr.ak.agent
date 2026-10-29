@@ -109,6 +109,24 @@ log_crashes() {
 
 wlog "watchdog up (port ${PORT}, interval ${CHECK_INTERVAL}s)"
 
+# On a hosted platform the logs are collected from stdout, so mirror the files there.
+# tail -F keeps working across the rotation above because it follows the name.
+if [ "${LOG_STDOUT:-0}" = "1" ]; then
+  touch logs/server.log logs/watchdog.log
+  tail -n 0 -F logs/server.log logs/watchdog.log &
+  TAIL_PID=$!
+fi
+
+# Stop the child before exiting so a platform shutdown does not leave a stray node
+# process holding the port for the next start.
+shutdown() {
+  wlog "shutting down"
+  [ -n "${TAIL_PID:-}" ] && kill "$TAIL_PID" 2>/dev/null
+  stop_server
+  exit 0
+}
+trap shutdown TERM INT
+
 # If nothing is serving yet (a fresh boot, or the app was stopped), bring it up at
 # once instead of waiting out the failure threshold.
 if ! curl -s -m 5 -o /dev/null "http://127.0.0.1:${PORT}/api/state" 2>/dev/null; then
