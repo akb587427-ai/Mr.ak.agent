@@ -83,18 +83,18 @@ export const toolDefinitions = [
       parameters: {
         type: 'object',
         properties: {
-          name: { type: ['string', 'null'], description: 'Customer name.' },
-          city: { type: ['string', 'null'], description: 'Their city.' },
+          name: { type: 'string', description: 'Customer name.' },
+          city: { type: 'string', description: 'Their city.' },
           product: {
-            type: ['string', 'null'],
+            type: 'string',
             description: 'Which TECH ARSLAN product or online service they want.',
           },
-          budget: { type: ['string', 'null'], description: 'Budget they mention.' },
+          budget: { type: 'string', description: 'Budget they mention.' },
           stage: {
-            type: ['string', 'null'],
+            type: 'string',
             description: 'Deal stage: new, interested, demo_pending, negotiating, ready_to_buy.',
           },
-          summary: { type: ['string', 'null'], description: 'One line on what they need.' },
+          summary: { type: 'string', description: 'One line on what they need.' },
         },
       },
     },

@@ -8,7 +8,9 @@ export const PROVIDERS = {
   gemini: {
     label: 'Google Gemini (free tier, generous limits)',
     baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai',
-    defaultModel: 'gemini-2.5-flash',
+    // A dated model name stops working once Google retires it, so this points at a
+    // current one and the extra models below act as daily-quota spare capacity.
+    defaultModel: 'gemini-3.1-flash-lite',
     keyUrl: 'https://aistudio.google.com/apikey',
   },
   groq: {
@@ -79,6 +81,17 @@ function presetFor(provider) {
   return PROVIDERS[provider] || PROVIDERS.custom;
 }
 
+// Gemini's free tier counts quota per model per day, so spreading requests across
+// several models multiplies the daily capacity instead of burning through one in a
+// few minutes. The "-latest" aliases survive model retirements.
+const GEMINI_MODELS = [
+  'gemini-flash-lite-latest',
+  'gemini-3.1-flash-lite',
+  'gemini-flash-latest',
+  'gemini-3-flash-preview',
+  'gemini-3.1-flash-lite-preview',
+];
+
 // One entry per usable key, ordered so the key the user picked in the dropdown is
 // tried first. Any key whose provider is recognised on its own gets that provider's
 // endpoint, even if the dropdown is on something else.
@@ -137,13 +150,32 @@ export function resolveEndpoints(config) {
 
     if (!baseUrl) continue;
     endpoints.push({
-      id: `${provider}:${baseUrl}:${key.slice(-6)}`,
+      id: `${provider}:${baseUrl}:${key.slice(-6)}:${model}`,
       apiKey: key,
       baseUrl,
       model,
       provider,
       label: `${preset.label || provider} (…${key.slice(-4)})`,
     });
+
+    // Gemini counts the daily free quota per model, so one key can be spread over
+    // several models. The user's own model stays first; the rest follow as extra
+    // capacity for when it runs out for the day.
+    if (provider === 'gemini') {
+      const extra = [model, ...GEMINI_MODELS].filter(
+        (m, i, all) => m && all.indexOf(m) === i,
+      );
+      for (const m of extra.slice(1)) {
+        endpoints.push({
+          id: `gemini:${baseUrl}:${key.slice(-6)}:${m}`,
+          apiKey: key,
+          baseUrl,
+          model: m,
+          provider,
+          label: `${preset.label || provider} (…${key.slice(-4)})`,
+        });
+      }
+    }
   }
 
   if (!endpoints.length) {
@@ -189,8 +221,9 @@ function parseRetryFromMessage(msg) {
   return n * 1000;
 }
 
-// A provider with no key may be shared by everyone, so it can only answer now and
-// then. This is the floor between two requests to such a provider.
+// A provider with no key is shared by everyone, so a light brake between requests
+// stops us hammering it. The provider's own limit messages set the real spacing; this
+// only covers the case where it accepts a request without saying anything.
 const KEYLESS_MIN_GAP_MS = 30000;
 const pace = new Map();
 const chain = { current: Promise.resolve() };
@@ -260,7 +293,7 @@ async function callEndpoint(endpoint, body) {
     method: 'POST',
     headers,
     body: JSON.stringify(body),
-    signal: AbortSignal.timeout(60000),
+    signal: AbortSignal.timeout(30000),
   });
   const text = await res.text();
   return { res, text };
@@ -296,9 +329,16 @@ async function requestEndpoint(endpoint, body) {
   }
 
   const msg = data?.error?.message || data?.message || text.slice(0, 300);
-  // Pollinations reports its free-tier wait as HTTP 402, so treat that the same as a
-  // rate limit and honour the delay it asks for.
-  const limited = res.status === 429 || (res.status === 402 && /limit|retry after/i.test(msg));
+  // A provider can report a full or overloaded service in several ways: 429 for a
+  // rate limit, 402 for a free-tier cap, and 503 when the shared free capacity is
+  // busy. Any of them that quotes a delay is treated as a limit so the caller waits
+  // the quoted time or moves to another endpoint instead of giving up.
+  const quoted = parseRetryFromMessage(msg);
+  const limited =
+    res.status === 429 ||
+    res.status === 402 ||
+    ((res.status === 503 || res.status === 500) && quoted > 0) ||
+    (quoted > 0 && /limit|busy|overload|try again/i.test(msg));
   const err = new Error(
     limited ? 'The AI provider is rate limiting us right now.' : `LLM error ${res.status}: ${msg}`,
   );
@@ -328,7 +368,7 @@ export async function chatCompletion({ endpoints, messages, tools, toolChoice, t
     // move straight to the next; only when none can answer do we wait for the
     // soonest limit to lift, then try again. This keeps a customer's reply flowing
     // across free tiers instead of failing the moment one key runs dry.
-    for (let round = 0; round < 3; round++) {
+    for (let round = 0; round < 8; round++) {
       const order = [...endpoints].sort((a, b) => {
         const pa = paceFor(a);
         const pb = paceFor(b);
@@ -345,8 +385,14 @@ export async function chatCompletion({ endpoints, messages, tools, toolChoice, t
           sawLimit = true;
           continue;
         }
-        // A keyless provider is shared by everyone, so space its requests out.
-        if (endpoint.keyless && p.lastCallAt && Date.now() - p.lastCallAt < KEYLESS_MIN_GAP_MS) {
+        // A keyless provider is shared by everyone, so space its requests out. The
+        // floor applies even after a limit message, because that message only reflects
+        // the moment it was sent.
+        if (
+          endpoint.keyless &&
+          p.lastCallAt &&
+          Date.now() - p.lastCallAt < KEYLESS_MIN_GAP_MS
+        ) {
           sawLimit = true;
           continue;
         }
@@ -366,12 +412,13 @@ export async function chatCompletion({ endpoints, messages, tools, toolChoice, t
 
       if (!sawLimit) break;
 
-      // Wait until the nearest endpoint can answer again: either its rate-limit
-      // window lifts, or a keyless provider's minimum gap has passed.
+      // Wait until the nearest endpoint can answer again. For a keyless provider the
+      // shared floor applies even when it quoted a shorter retry, since its real limit
+      // is per IP and the quote only reflects one moment.
       const readyAt = (e) => {
         const p = paceFor(e);
         const times = [];
-        if (p.remainingTokens !== null && p.resetAt > Date.now()) times.push(p.resetAt);
+        if (p.resetAt > Date.now()) times.push(p.resetAt);
         if (e.keyless && p.lastCallAt) times.push(p.lastCallAt + KEYLESS_MIN_GAP_MS);
         return times.length ? Math.max(...times) : Date.now();
       };
