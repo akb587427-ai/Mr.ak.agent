@@ -105,8 +105,12 @@ Open the web page, then:
   unlinks companions that stay offline for long.
 - Sessions are stored in `data/auth`. Log out from the UI to unlink and clear them.
 - The API key lives in plain text in `data/config.json`. Do not commit it.
-- Free tiers limit how many tokens a key may use per minute, and every reply carries
-  the whole business brief, so one Groq free key answers only about two messages a
-  minute. Google Gemini's free tier is far more generous, so it is the recommended
-  default. Adding a second or third free key from any provider raises the budget
-  further; the agent spreads requests across them and only waits when all are spent.
+- Free tiers limit how much a key may use. A Groq free key allows about 8,000 tokens
+  a minute, which is roughly two replies, so a single Groq key is not enough on its
+  own. Google Gemini counts its free quota per model per day, so the agent spreads one
+  Gemini key across several models and holds about five times the daily capacity. Add
+  a second or third key from any provider to raise it further; the agent spreads
+  requests across all of them and only waits when every one is spent.
+- With no key at all the agent answers through Pollinations, which needs no signup and
+  allows about one reply every 30 seconds per IP. It always stays at the end of the
+  queue, so an expired or exhausted key never leaves a customer unanswered.
