@@ -1,0 +1,32 @@
+[Unit]
+Description=WhatsApp AI agent (TECH ARSLAN SOFTWARE SOLUTIONS)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=waagent
+WorkingDirectory=/opt/whatsapp-ai-agent
+ExecStart=/usr/bin/bash watchdog.sh
+Restart=always
+# The watchdog exits only if it is broken, so a restart is a real failure and should
+# not be hammered.
+RestartSec=10
+
+Environment=NODE_ENV=production
+# PORT, DATA_DIR and AUTH_DIR can be overridden here. The defaults put state in ./data,
+# which is fine as long as that path is on disk the service can write to.
+# Environment=PORT=12000
+# Environment=DATA_DIR=/var/lib/waagent
+# Environment=AUTH_DIR=/var/lib/waagent/auth
+# Keep the API key out of this unit file; put it in the dashboard, or use an
+# EnvironmentFile that only the service user can read.
+# EnvironmentFile=/etc/whatsapp-ai-agent.env
+
+# The agent only needs to be reachable locally if a reverse proxy or Cloudflare Tunnel
+# sits in front of it; it does not need any inbound port opened to the internet.
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

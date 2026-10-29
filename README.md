@@ -110,8 +110,48 @@ Notes for this host:
 - `railway.json` points the healthcheck at `/api/state`, which answers `200` once the
   web app is up. A healthcheck only runs at deploy time, not continuously.
 
+**Cost.** Railway bills per minute of use at $20/vCPU-month and $10/GB-month RAM, and
+this service is always on, so it is never idle. The app uses about 125 MB RAM, which is
+about $1.25/month on its own, plus CPU while answering messages. That is roughly
+$1.70-$3.30/month depending on traffic. The **Free plan's $1/month credit does not
+cover it**, and the free plan also has no `Always` restart policy. The **Hobby plan at
+$5/month** does cover it with room to spare. Railway gives a one-time $5 trial credit
+first, so the first month is free.
+
+For a genuinely free always-on host, an Oracle Cloud **Always Free** Ampere A1 instance
+(2 OCPU, 12 GB RAM, Arm) is a better fit, because this app needs no more than a
+fraction of that. It is a plain Ubuntu VM, so `Dockerfile` is not needed there — clone
+the repo, `npm ci`, then run `bash ensure-running.sh` under systemd.
+
 Any Docker host works the same way: `docker build -t wa-agent .` then
 `docker run -p 12000:12000 -v wa-data:/data -e LLM_API_KEY=... -e OWNER_NUMBER=... wa-agent`.
+
+### On a plain VPS (Oracle Always Free, Hetzner, DigitalOcean)
+
+A VM is the cheapest durable option and the only one that is genuinely free forever
+(Oracle's Always Free tier). No Docker is needed:
+
+```bash
+sudo useradd -r -m -d /opt/whatsapp-ai-agent waagent
+sudo -u waagent git clone <your-repo> /opt/whatsapp-ai-agent
+cd /opt/whatsapp-ai-agent && sudo -u waagent npm ci --omit=dev
+
+sudo cp deploy/whatsapp-ai-agent.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now whatsapp-ai-agent
+```
+
+`deploy/whatsapp-ai-agent.service` runs the watchdog under systemd, which is what the
+sandbox was missing: systemd restarts the watchdog if it ever exits, and the watchdog
+restarts the app if it stops answering. Set the API key from the dashboard rather than
+in the unit file, so it is not world-readable.
+
+To give that VM a public HTTPS URL without opening a port or buying a domain, put
+Cloudflare Tunnel in front of it:
+
+```bash
+cloudflared tunnel --url http://localhost:12000   # prints a public https:// URL
+```
 
 Open the web page, then:
 

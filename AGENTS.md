@@ -28,8 +28,19 @@ user-supplied OpenAI-compatible LLM.
 - Public runtime URLs are `https://work-1-<runtime>.prod-runtime.all-hands.dev/` (port 12000)
   and `https://work-2-...` (port 12001); they are open without extra auth.
 - `data/` holds config (plain-text API key), chat memory, and WhatsApp auth; it is gitignored.
-- There is no systemd or cron here (PID 1 is `openhands-agent-server`), so autostart
-  relies on a hook in `~/.bashrc` and `~/.profile` that runs `ensure-running.sh`.
+- There is no systemd or cron here (PID 1 is `openhands-agent-server`), and shells are
+  **non-interactive**, so `~/.bashrc` is never sourced — an autostart hook there does
+  not fire. The sandbox also stops the whole machine without warning. Treat this
+  environment as non-durable and deploy to a host for anything long-lived.
+- Deployment files: `Dockerfile` (hosts `watchdog.sh` as the entrypoint, via tini),
+  `railway.json` (healthcheck `/api/state`), `deploy/whatsapp-ai-agent.service`
+  (systemd unit for a VPS). See README "Deploy to a host".
+- `DATA_DIR` and `AUTH_DIR` are read from the environment, which is how a mounted
+  volume keeps the WhatsApp session and config across a redeploy. Both must be set:
+  `DATA_DIR` covers config/history/leads, `AUTH_DIR` the Baileys session.
+- `LLM_API_KEY` and `OWNER_NUMBER` seed a fresh volume's config on first boot only; a
+  saved config always wins.
+- `LOG_STDOUT=1` mirrors the log files to stdout for platform log collection.
 - Free-tier LLM limits drive most behaviour: Gemini counts quota per model per day, so
   one key is spread across several models, and Pollinations (keyless) allows roughly
   one reply per 30s per IP. See README "Notes and limits".
