@@ -88,17 +88,21 @@ function applyConfig(cfg) {
     $('respondToGroups').checked = !!cfg.respondToGroups;
     initialized = true;
   }
-  $('keyHint').textContent = cfg.hasKey ? `saved (${cfg.keyHint}) — leave blank to keep` : 'not set';
+  $('keyHint').textContent = cfg.hasKey
+    ? `${cfg.keyCount > 1 ? cfg.keyCount + ' keys saved' : 'saved'} (${cfg.keyHint}) — leave blank to keep`
+    : 'not set';
   updateKeyHelp();
 }
 
 function updateKeyHelp() {
   const p = providers[$('provider').value];
   const help = $('keyHelp');
-  if (!p) { help.innerHTML = ''; return; }
-  help.innerHTML = p.keyUrl
-    ? `Get a key from <a href="${p.keyUrl}" target="_blank" rel="noopener" style="color:var(--accent2)">${p.keyUrl}</a>`
-    : 'Point base URL to any OpenAI-compatible endpoint.';
+  if (!help) return;
+  const extra =
+    ' You can paste more than one key, separated by commas. Each free key has its own per-minute limit, so two or three keys together keep the agent replying even when customers are busy.';
+  help.innerHTML = p && p.keyUrl
+    ? `Get a free key from <a href="${p.keyUrl}" target="_blank" rel="noopener" style="color:var(--accent2)">${p.keyUrl}</a>.${extra}`
+    : `Point base URL to any OpenAI-compatible endpoint.${extra}`;
 }
 
 function renderLogs(logs) {

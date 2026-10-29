@@ -290,8 +290,21 @@ async function handleMessage(sock, msg) {
     log('info', `Replied to ${replyJid}`);
   } catch (e) {
     log('error', 'Failed to reply', e.message);
-    // A rate limit is temporary, not a setup problem. Tell the customer the truth
-    // and keep the conversation open.
+    // A rate limit is temporary, not a setup problem. Wait out the window and try
+    // once more before telling the customer anything.
+    if (e.rateLimited) {
+      const wait = Math.min(e.retryAfterMs || 20000, 60000);
+      log('info', `Rate limited; retrying in ${Math.round(wait / 1000)}s`);
+      await delay(wait);
+      try {
+        const { reply } = await respond(contactJid, content, { notifyOwner, phone });
+        await sock.sendMessage(replyJid, { text: reply }, { quoted: msg });
+        log('info', `Replied to ${replyJid} after waiting out the rate limit`);
+        return;
+      } catch (e2) {
+        log('error', 'Retry after rate limit failed', e2.message);
+      }
+    }
     const friendly = e.rateLimited
       ? 'Sorry, hamara system is waqt thora busy hai. Please 1 minute baad dobara message karein — main aap ki madad zaroor karunga.'
       : 'Sorry, I could not reply just now. Please try again in a moment, or contact us directly on +92 320 0199895.';

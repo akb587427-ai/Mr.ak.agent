@@ -5,7 +5,7 @@ import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { store, saveConfig, log, clearHistory } from './store.js';
-import { PROVIDERS, resolveLlm, chatCompletion, listModels, detectProviderFromKey } from './llm.js';
+import { PROVIDERS, resolveEndpoints, chatCompletion, listModels, detectProviderFromKey, splitKeys, endpointSummary } from './llm.js';
 import { startWhatsApp, wa, requestPairing, cancelPairing } from './whatsapp.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -27,10 +27,13 @@ const AUTH_DIR = process.env.AUTH_DIR || path.join(process.cwd(), 'data', 'auth'
 
 function publicConfig() {
   const { apiKey, ...rest } = store.config;
+  const keys = splitKeys(apiKey);
   return {
     ...rest,
-    hasKey: Boolean(apiKey),
-    keyHint: apiKey ? `...${apiKey.slice(-4)}` : '',
+    hasKey: keys.length > 0,
+    keyHint: keys.length ? `...${keys[0].slice(-4)}` : '',
+    keyCount: keys.length,
+    endpoints: keys.length ? endpointSummary(store.config).map((e) => ({ provider: e.provider, label: e.label })) : [],
   };
 }
 
@@ -129,12 +132,12 @@ app.post('/api/models', async (_req, res) => {
 
 app.post('/api/test-llm', async (_req, res) => {
   try {
-    const llm = resolveLlm(store.config);
+    const endpoints = resolveEndpoints(store.config);
     const choice = await chatCompletion({
-      ...llm,
+      endpoints,
       messages: [{ role: 'user', content: 'Reply with exactly: OK' }],
     });
-    res.json({ ok: true, model: llm.model, reply: (choice.content || '').trim() });
+    res.json({ ok: true, model: endpoints[0].model, keys: endpoints.length, reply: (choice.content || '').trim() });
   } catch (e) {
     res.status(400).json({ ok: false, error: e.message });
   }

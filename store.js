@@ -20,7 +20,7 @@ function readJson(file, fallback) {
 
 export function defaultConfig() {
   return {
-    provider: 'groq',
+    provider: 'gemini',
     apiKey: '',
     model: '',
     baseUrl: '',

@@ -6,10 +6,13 @@ that answers your incoming WhatsApp messages.
 ## What it does
 
 - Links WhatsApp by QR code or by an 8-character pairing code (phone number entry).
-- Answers direct messages with an LLM of your choice (Groq, OpenAI, OpenRouter,
-  Together, DeepSeek, or any OpenAI-compatible endpoint). The provider is filled in
-  automatically from the API key, so a pasted key works even if the dropdown was left
-  on Custom.
+- Answers direct messages with an LLM of your choice (Google Gemini, Groq, OpenAI,
+  OpenRouter, Together, DeepSeek, or any OpenAI-compatible endpoint). The provider is
+  filled in automatically from the API key, so a pasted key works even if the dropdown
+  was left on Custom.
+- Accepts several API keys at once, separated by commas. Each free key has its own
+  per-minute limit, so two or three keys give the agent a comfortable budget. When one
+  key is rate limited the agent moves to the next instead of making the customer wait.
 - Gives the agent tools: `web_search`, `current_time`, `remember_customer`
   (builds a profile per chat) and `alert_owner` / `save_lead` (hands a qualified
   customer to the owner).
@@ -99,3 +102,8 @@ Open the web page, then:
   unlinks companions that stay offline for long.
 - Sessions are stored in `data/auth`. Log out from the UI to unlink and clear them.
 - The API key lives in plain text in `data/config.json`. Do not commit it.
+- Free tiers limit how many tokens a key may use per minute, and every reply carries
+  the whole business brief, so one Groq free key answers only about two messages a
+  minute. Google Gemini's free tier is far more generous, so it is the recommended
+  default. Adding a second or third free key from any provider raises the budget
+  further; the agent spreads requests across them and only waits when all are spent.

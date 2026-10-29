@@ -104,20 +104,24 @@ export const toolDefinitions = [
       parameters: {
         type: 'object',
         properties: {
-          name: { type: 'string', description: 'Customer name.' },
-          business_name: { type: 'string', description: 'Name of their business.' },
-          business_type: { type: 'string', description: 'What kind of business they run.' },
-          city: { type: 'string', description: 'Their city.' },
-          product: { type: 'string', description: 'Which TECH ARSLAN product or online service they are interested in.' },
-          email: { type: 'string', description: 'Their email, if they share one.' },
-          budget: { type: 'string', description: 'Budget they mention.' },
-          timeline: { type: 'string', description: 'When they want to start, e.g. this month.' },
+          name: { type: ['string', 'null'], description: 'Customer name.' },
+          business_name: { type: ['string', 'null'], description: 'Name of their business.' },
+          business_type: { type: ['string', 'null'], description: 'What kind of business they run.' },
+          city: { type: ['string', 'null'], description: 'Their city.' },
+          product: {
+            type: ['string', 'null'],
+            description: 'Which TECH ARSLAN product or online service they are interested in.',
+          },
+          email: { type: ['string', 'null'], description: 'Their email, if they share one.' },
+          budget: { type: ['string', 'null'], description: 'Budget they mention.' },
+          timeline: { type: ['string', 'null'], description: 'When they want to start, e.g. this month.' },
           stage: {
-            type: 'string',
-            description: 'Where the deal stands: new, interested, demo_pending, demo_done, negotiating, ready_to_buy, not_interested.',
+            type: ['string', 'null'],
+            description:
+              'Where the deal stands: new, interested, demo_pending, demo_done, negotiating, ready_to_buy, not_interested.',
           },
           summary: {
-            type: 'string',
+            type: ['string', 'null'],
             description: 'One or two lines summarising their requirement, so you remember it next time.',
           },
         },
