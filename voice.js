@@ -375,11 +375,14 @@ async function toSpeakableScript(text, voice) {
         { role: 'user', content: text },
       ],
       temperature: 0,
+      // The default 600-token budget is not enough for a reasoning model, which spends
+      // it on its thinking and returns no text at all.
+      maxTokens: 2000,
     });
     const out = (choice.content || '').trim();
     // Only trust the conversion if it actually produced the expected script.
     if (out && target.re.test(out)) return out;
-    log('warn', 'Transliteration did not return the expected script; speaking the original');
+    log('warn', `Transliteration for speech returned no ${target.script}; speaking the original text`);
   } catch (e) {
     log('warn', `Could not transliterate for speech: ${String(e.message).slice(0, 80)}`);
   }

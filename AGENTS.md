@@ -285,3 +285,13 @@ back from Whisper as proper Urdu.
 `baseUrl` was empty, so a Groq key was sent to OpenAI and came back `401 Incorrect API key`.
 Both now take the base URL from `resolveEndpoints`, so the key always reaches the provider
 it belongs to.
+
+### Reasoning models can return an empty answer
+
+`chatCompletion` capped replies at `max_tokens: 600`, which is fine for a plain chat model.
+A reasoning model such as Groq's `openai/gpt-oss-120b` spends that same budget on its
+thinking and then returns `content: ""` with the thinking in `reasoning`. A long customer
+question could therefore produce a blank reply, and the transliteration for voice always
+failed. `chatCompletion` now retries once with a larger budget when the content is empty
+but reasoning is present, accepts a `maxTokens` override, and the transliteration call asks
+for 2000 tokens. Verified: a 179-character question now returns a full 1489-character reply.

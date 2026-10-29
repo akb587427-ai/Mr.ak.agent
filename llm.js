@@ -360,8 +360,7 @@ async function requestEndpoint(endpoint, body) {
   throw err;
 }
 
-export async function chatCompletion({ endpoints, messages, tools, toolChoice, temperature = 0.6 }) {
-  const maxTokens = 600;
+export async function chatCompletion({ endpoints, messages, tools, toolChoice, temperature = 0.6, maxTokens = 600 }) {
   const body = { messages, temperature, max_tokens: maxTokens };
   if (tools?.length) {
     body.tools = tools;
@@ -405,7 +404,15 @@ export async function chatCompletion({ endpoints, messages, tools, toolChoice, t
           continue;
         }
         try {
-          return await requestEndpoint(endpoint, body);
+          const choice = await requestEndpoint(endpoint, body);
+          // A reasoning model spends the same token budget on its thinking, so a tight
+          // max_tokens can leave the actual answer empty. Retry once with more room
+          // rather than handing the customer a blank reply.
+          if (!String(choice.content || '').trim() && choice.reasoning) {
+            log('warn', `${endpoint.provider} returned only reasoning; retrying with a larger token budget`);
+            return await requestEndpoint(endpoint, { ...body, max_tokens: maxTokens + 3000 });
+          }
+          return choice;
         } catch (e) {
           lastError = e;
           if (e.rateLimited) {
