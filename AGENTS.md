@@ -44,3 +44,9 @@ user-supplied OpenAI-compatible LLM.
 - Free-tier LLM limits drive most behaviour: Gemini counts quota per model per day, so
   one key is spread across several models, and Pollinations (keyless) allows roughly
   one reply per 30s per IP. See README "Notes and limits".
+- The GitHub repo is `akb587427-ai/Mr.ak.agent` (public), branch `main`. The repo was
+  pushed with the OAuth token in `~/.config/gh/hosts.yml`; the `GITHUB_TOKEN`
+  environment variable is a read-only GitHub App token and is rejected (403) for
+  writes, even though the API reports `push: true`.
+- `railway.json`, `Dockerfile` and `.dockerignore` are the deploy files; the service
+  must have a Volume at `/data` or a redeploy logs the user out of WhatsApp.
