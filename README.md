@@ -17,8 +17,12 @@ that answers your incoming WhatsApp messages.
 - DMs the owner's WhatsApp for every qualified customer. Set the number in the
   "Your WhatsApp number for lead alerts" field and use Send test alert to check.
 - Keeps short per-chat memory and shows a live activity log.
-- Trained on the TECH ARSLAN business brief (products, prices, FAQs, sales style)
-  held in `knowledge.js`, editable from the Business knowledge box in the web app.
+- Trained on the TECH ARSLAN business brief held in `knowledge.js`, editable from
+  the Business knowledge box in the web app. It covers the eight business software
+  products with prices, plus the online digital services sold on request (social
+  media growth, monetization and approvals, ad accounts, RDP and servers,
+  international and virtual numbers, PayPal and Payoneer accounts, domains and
+  hosting, and more).
 - Qualifies customers and saves their details to the Customer panel.
 
 ## Training the agent on your business
@@ -27,7 +31,8 @@ The agent's knowledge lives in `knowledge.js`. It is appended to the system prom
 on every reply, so it always knows:
 
 - who the company is and who to contact
-- all eight products with prices and features
+- all eight software products with prices and features
+- the online digital services offered on request
 - answers to the common questions
 - how to talk to customers and when to hand over to a human
 

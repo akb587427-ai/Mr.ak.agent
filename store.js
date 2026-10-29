@@ -8,7 +8,7 @@ fs.mkdirSync(DATA_DIR, { recursive: true });
 const CONFIG_FILE = path.join(DATA_DIR, 'config.json');
 const HISTORY_FILE = path.join(DATA_DIR, 'history.json');
 const MAX_LOG = 300;
-const MAX_HISTORY = 24;
+const MAX_HISTORY = 16;
 
 function readJson(file, fallback) {
   try {
@@ -25,7 +25,7 @@ export function defaultConfig() {
     model: '',
     baseUrl: '',
     systemPrompt:
-      'You are the official WhatsApp sales and support assistant for TECH ARSLAN SOFTWARE SOLUTIONS. Be warm, professional and brief. Use plain text only, no markdown.',
+      'You are the official WhatsApp sales and support assistant for TECH ARSLAN SOFTWARE SOLUTIONS. You sell our business software and our online digital services. Be warm, professional and brief. Use plain text only, no markdown.',
     knowledge: DEFAULT_KNOWLEDGE,
     ownerNumber: '',
     enabled: true,

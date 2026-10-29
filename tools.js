@@ -100,7 +100,7 @@ export const toolDefinitions = [
     function: {
       name: 'remember_customer',
       description:
-        'Save or update what you learn about this customer as the conversation goes on: their name, business, city, the software they want, budget, timeline and how far along the deal is. Call this whenever you learn something new. Do not ask for details you already know.',
+        'Save or update what you learn about this customer as the conversation goes on: their name, city, the product or online service they want, budget, timeline and how far along the deal is. Call this whenever you learn something new. Do not ask for details you already know.',
       parameters: {
         type: 'object',
         properties: {
@@ -108,7 +108,7 @@ export const toolDefinitions = [
           business_name: { type: 'string', description: 'Name of their business.' },
           business_type: { type: 'string', description: 'What kind of business they run.' },
           city: { type: 'string', description: 'Their city.' },
-          product: { type: 'string', description: 'Which TECH ARSLAN product they are interested in.' },
+          product: { type: 'string', description: 'Which TECH ARSLAN product or online service they are interested in.' },
           email: { type: 'string', description: 'Their email, if they share one.' },
           budget: { type: 'string', description: 'Budget they mention.' },
           timeline: { type: 'string', description: 'When they want to start, e.g. this month.' },
@@ -151,7 +151,7 @@ export const toolDefinitions = [
           name: { type: 'string', description: 'Customer name.' },
           business_name: { type: 'string', description: 'Name of their business, if given.' },
           city: { type: 'string', description: 'Their city, if given.' },
-          product: { type: 'string', description: 'Which TECH ARSLAN product they are interested in.' },
+          product: { type: 'string', description: 'Which TECH ARSLAN product or online service they are interested in.' },
           business_type: { type: 'string', description: 'What kind of business they run.' },
           notes: { type: 'string', description: 'Anything else useful, e.g. budget or timeline.' },
         },

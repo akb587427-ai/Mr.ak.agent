@@ -82,11 +82,12 @@ function welcomeText() {
   return [
     'Assalam o Alaikum and welcome to TECH ARSLAN SOFTWARE SOLUTIONS! 👋',
     '',
-    'I am the official assistant for Arslan Akram and our team. We build business software for pharmacies, laboratories, hospitals, schools, restaurants, hotels, and retail businesses.',
+    'I am the official assistant for Arslan Akram and our team. We provide two things:',
     '',
-    'To point you to the right solution, may I ask: what kind of business do you run, and what would you like the software to do for you?',
+    '1. Business software - pharmacy, laboratory, hospital, school, restaurant, hotel, retail and inventory systems.',
+    '2. Online digital services - social media growth, monetization and approvals, ad accounts, RDP and servers, international and virtual numbers, PayPal and Payoneer accounts, domains and hosting, and more.',
     '',
-    'You can also tell me your city, and I will arrange a free live demo on WhatsApp with our team.',
+    'Please tell me your requirement and I will guide you. Which one do you need - a business software, or an online service?',
   ].join('\n');
 }
 
