@@ -5,6 +5,7 @@ export PORT="${PORT:-12000}"
 mkdir -p logs
 
 while true; do
+  date +%s > logs/server.started
   node server.js >> logs/server.log 2>&1
   code=$?
   echo "[start.sh] server exited (code $code), restarting in 2s" >> logs/server.log

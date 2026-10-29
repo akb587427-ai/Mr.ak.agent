@@ -56,10 +56,26 @@ npm start          # listens on http://0.0.0.0:12000
 Keep it alive across crashes and restarts:
 
 ```bash
-bash ensure-running.sh   # starts it if not already running (safe to call anytime)
+bash ensure-running.sh   # starts the watchdog if it is not already up (safe to call anytime)
 ```
 
-Logs are written to `logs/server.log`.
+For a long unattended run use the watchdog rather than `npm start`. It restarts the
+app when it crashes, when the web app stops answering even though the process is
+still alive, and when WhatsApp stays disconnected too long. It also rotates the logs
+so they cannot fill the disk.
+
+```bash
+bash watchdog.sh         # runs in the foreground; use ensure-running.sh to detach it
+```
+
+Behaviour can be tuned with environment variables: `CHECK_INTERVAL` (seconds between
+checks, default 30), `FAIL_THRESHOLD` (bad checks before a restart, default 4), and
+`MIN_UPTIME_BEFORE_TRUST` (a restart sooner than this counts as a crash loop and adds
+a back-off, default 60).
+
+On this machine there is no systemd or cron, so the autostart hook in `~/.bashrc` and
+`~/.profile` re-launches the watchdog whenever a shell starts, which covers a
+container restart. Logs are written to `logs/server.log` and `logs/watchdog.log`.
 
 Open the web page, then:
 
