@@ -77,53 +77,24 @@ export const toolDefinitions = [
   {
     type: 'function',
     function: {
-      name: 'web_search',
-      description:
-        'Look up factual or encyclopedic information on the web. Use it when the user asks about a person, place, product, or topic you are unsure about.',
-      parameters: {
-        type: 'object',
-        properties: { query: { type: 'string', description: 'The search query.' } },
-        required: ['query'],
-      },
-    },
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'current_time',
-      description: 'Get the current date and time.',
-      parameters: { type: 'object', properties: {} },
-    },
-  },
-  {
-    type: 'function',
-    function: {
       name: 'remember_customer',
       description:
-        'Save or update what you learn about this customer as the conversation goes on: their name, city, the product or online service they want, budget, timeline and how far along the deal is. Call this whenever you learn something new. Do not ask for details you already know.',
+        'Save what you learn about this customer: their name, city, the product or online service they want, and how far along the deal is. Call it whenever you learn something new.',
       parameters: {
         type: 'object',
         properties: {
           name: { type: ['string', 'null'], description: 'Customer name.' },
-          business_name: { type: ['string', 'null'], description: 'Name of their business.' },
-          business_type: { type: ['string', 'null'], description: 'What kind of business they run.' },
           city: { type: ['string', 'null'], description: 'Their city.' },
           product: {
             type: ['string', 'null'],
-            description: 'Which TECH ARSLAN product or online service they are interested in.',
+            description: 'Which TECH ARSLAN product or online service they want.',
           },
-          email: { type: ['string', 'null'], description: 'Their email, if they share one.' },
           budget: { type: ['string', 'null'], description: 'Budget they mention.' },
-          timeline: { type: ['string', 'null'], description: 'When they want to start, e.g. this month.' },
           stage: {
             type: ['string', 'null'],
-            description:
-              'Where the deal stands: new, interested, demo_pending, demo_done, negotiating, ready_to_buy, not_interested.',
+            description: 'Deal stage: new, interested, demo_pending, negotiating, ready_to_buy.',
           },
-          summary: {
-            type: ['string', 'null'],
-            description: 'One or two lines summarising their requirement, so you remember it next time.',
-          },
+          summary: { type: ['string', 'null'], description: 'One line on what they need.' },
         },
       },
     },
@@ -133,33 +104,13 @@ export const toolDefinitions = [
     function: {
       name: 'alert_owner',
       description:
-        'Send a WhatsApp alert to the business owner (Arslan) about a customer who is ready for a human to contact them. Call this once you have the customer name and what they need, and definitely when they agree to a demo or to buy.',
+        'Alert the owner (Arslan) on WhatsApp about a customer who is ready for a human. Use it once you have their name and what they need, and when they agree to a demo or to buy.',
       parameters: {
         type: 'object',
         properties: {
-          reason: { type: 'string', description: 'Why the owner should follow up, e.g. agreed to demo.' },
+          reason: { type: 'string', description: 'Why the owner should follow up.' },
         },
         required: ['reason'],
-      },
-    },
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'save_lead',
-      description:
-        'Mark the customer as a qualified lead once you have at least their name and what they need. Also alerts the owner.',
-      parameters: {
-        type: 'object',
-        properties: {
-          name: { type: 'string', description: 'Customer name.' },
-          business_name: { type: 'string', description: 'Name of their business, if given.' },
-          city: { type: 'string', description: 'Their city, if given.' },
-          product: { type: 'string', description: 'Which TECH ARSLAN product or online service they are interested in.' },
-          business_type: { type: 'string', description: 'What kind of business they run.' },
-          notes: { type: 'string', description: 'Anything else useful, e.g. budget or timeline.' },
-        },
-        required: ['name'],
       },
     },
   },

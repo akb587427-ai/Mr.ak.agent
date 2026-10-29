@@ -20,7 +20,7 @@ function readJson(file, fallback) {
 
 export function defaultConfig() {
   return {
-    provider: 'gemini',
+    provider: 'pollinations',
     apiKey: '',
     model: '',
     baseUrl: '',

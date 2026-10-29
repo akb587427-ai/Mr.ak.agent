@@ -100,6 +100,12 @@ function updateKeyHelp() {
   if (!help) return;
   const extra =
     ' You can paste more than one key, separated by commas. Each free key has its own per-minute limit, so two or three keys together keep the agent replying even when customers are busy.';
+  if (p && p.keyless) {
+    help.innerHTML =
+      'This provider is free and needs no key. It works on its own, and it stays in the queue as a backstop when you add your own keys. It allows about one reply every 30 seconds, so add a free Gemini key below for heavy traffic.' +
+      extra;
+    return;
+  }
   help.innerHTML = p && p.keyUrl
     ? `Get a free key from <a href="${p.keyUrl}" target="_blank" rel="noopener" style="color:var(--accent2)">${p.keyUrl}</a>.${extra}`
     : `Point base URL to any OpenAI-compatible endpoint.${extra}`;

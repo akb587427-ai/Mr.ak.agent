@@ -1,4 +1,10 @@
 export const PROVIDERS = {
+  pollinations: {
+    label: 'Pollinations (free, no key needed)',
+    baseUrl: 'https://text.pollinations.ai/openai',
+    defaultModel: 'openai',
+    keyless: true,
+  },
   gemini: {
     label: 'Google Gemini (free tier, generous limits)',
     baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai',
@@ -78,12 +84,30 @@ function presetFor(provider) {
 // endpoint, even if the dropdown is on something else.
 export function resolveEndpoints(config) {
   const keys = splitKeys(config.apiKey);
+  const chosen = config.provider || 'custom';
+  const chosenPreset = presetFor(chosen);
+
+  // Some providers need no key at all. They are always available, so the agent can
+  // answer out of the box, and they stay in the pool as spare capacity even when
+  // paid or limited keys are configured alongside them.
+  const keyless = [];
+  if (chosenPreset.keyless && !keys.length) {
+    keyless.push({
+      id: `keyless:${chosenPreset.baseUrl}`,
+      apiKey: '',
+      baseUrl: (chosenPreset.baseUrl || '').replace(/\/+$/, ''),
+      model: config.model || chosenPreset.defaultModel,
+      provider: chosen,
+      label: chosenPreset.label,
+      keyless: true,
+    });
+  }
+
   if (!keys.length) {
+    if (keyless.length) return keyless;
     throw new Error('No LLM API key set. Open AI settings in the web app and add one.');
   }
 
-  const chosen = config.provider || 'custom';
-  const chosenPreset = presetFor(chosen);
   const configuredBase = (config.baseUrl || '').replace(/\/+$/, '');
   const endpoints = [];
 
@@ -128,6 +152,22 @@ export function resolveEndpoints(config) {
 
   // Keep the user's chosen provider in front, the rest as spare capacity.
   endpoints.sort((a, b) => (a.provider === chosen ? -1 : 0) - (b.provider === chosen ? -1 : 0));
+
+  // Always keep one keyless provider at the end of the queue. It costs nothing and
+  // needs no signup, so a missing, expired or exhausted key still leaves the agent
+  // able to answer a customer instead of going silent.
+  const fallback = PROVIDERS.pollinations;
+  if (!endpoints.some((e) => e.provider === 'pollinations')) {
+    endpoints.push({
+      id: `keyless:${fallback.baseUrl}`,
+      apiKey: '',
+      baseUrl: fallback.baseUrl,
+      model: fallback.defaultModel,
+      provider: 'pollinations',
+      label: fallback.label,
+      keyless: true,
+    });
+  }
   return endpoints;
 }
 
@@ -137,9 +177,21 @@ export function resolveLlm(config) {
   return { apiKey: first.apiKey, baseUrl: first.baseUrl, model: first.model, provider: first.provider };
 }
 
-// Each endpoint gets its own budget, tracked from the headers the provider sends
-// back. When one key is exhausted we move to the next instead of making the
-// customer wait out the window.
+// Some providers quote the wait inside the message instead of a header, for example
+// Pollinations' "Retry after 22s". Reading it lets us pace that provider properly.
+function parseRetryFromMessage(msg) {
+  const m = String(msg || '').match(/retry after\s+(\d+(?:\.\d+)?)\s*(ms|s|seconds?|m|minutes?)?/i);
+  if (!m) return 0;
+  const n = Number(m[1]);
+  const unit = (m[2] || 's').toLowerCase();
+  if (unit.startsWith('ms')) return n;
+  if (unit.startsWith('m')) return n * 60000;
+  return n * 1000;
+}
+
+// A provider with no key may be shared by everyone, so it can only answer now and
+// then. This is the floor between two requests to such a provider.
+const KEYLESS_MIN_GAP_MS = 30000;
 const pace = new Map();
 const chain = { current: Promise.resolve() };
 
@@ -177,11 +229,15 @@ function noteLimits(p, res) {
 // The endpoint with the most room right now, preferring earlier entries (the user's
 // chosen provider) when they are equally free.
 function pickEndpoint(endpoints, need) {
+  const now = Date.now();
   let best = null;
   let bestWait = Infinity;
   for (const e of endpoints) {
     const p = paceFor(e);
-    const wait = Math.max(p.resetAt - Date.now(), 0);
+    const wait = Math.max(p.resetAt - now, 0);
+    // Once the window has passed the counter starts fresh, so a key marked as spent
+    // becomes usable again without another request to confirm it.
+    if (wait <= 0) p.remainingTokens = null;
     const room = p.remainingTokens === null || p.remainingTokens >= need;
     if (room && wait <= 0) return e;
     const score = (room ? 0 : 1000000) + wait;
@@ -198,12 +254,11 @@ function estimateTokens(messages, tools, maxTokens) {
 }
 
 async function callEndpoint(endpoint, body) {
+  const headers = { 'Content-Type': 'application/json' };
+  if (endpoint.apiKey) headers.Authorization = `Bearer ${endpoint.apiKey}`;
   const res = await fetch(`${endpoint.baseUrl}/chat/completions`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${endpoint.apiKey}`,
-    },
+    headers,
     body: JSON.stringify(body),
     signal: AbortSignal.timeout(60000),
   });
@@ -211,9 +266,55 @@ async function callEndpoint(endpoint, body) {
   return { res, text };
 }
 
+// One request to one endpoint. Returns the model's message, or throws. A limit is
+// recorded on the endpoint so the caller can pick a different one next time.
+async function requestEndpoint(endpoint, body) {
+  const p = paceFor(endpoint);
+  p.lastCallAt = Date.now();
+  let res;
+  let text;
+  try {
+    ({ res, text } = await callEndpoint(endpoint, { ...body, model: endpoint.model }));
+  } catch (e) {
+    const err = new Error(`Could not reach the AI provider: ${e.message}`);
+    err.network = true;
+    throw err;
+  }
+  noteLimits(p, res);
+
+  let data;
+  try {
+    data = JSON.parse(text);
+  } catch {
+    throw new Error(`LLM returned non-JSON response (${res.status}): ${text.slice(0, 200)}`);
+  }
+
+  if (res.ok) {
+    const choice = data.choices?.[0]?.message;
+    if (!choice) throw new Error('LLM returned no choices.');
+    return choice;
+  }
+
+  const msg = data?.error?.message || data?.message || text.slice(0, 300);
+  // Pollinations reports its free-tier wait as HTTP 402, so treat that the same as a
+  // rate limit and honour the delay it asks for.
+  const limited = res.status === 429 || (res.status === 402 && /limit|retry after/i.test(msg));
+  const err = new Error(
+    limited ? 'The AI provider is rate limiting us right now.' : `LLM error ${res.status}: ${msg}`,
+  );
+  if (limited) {
+    const wait = rateLimitWait(res, p, msg);
+    err.rateLimited = true;
+    err.retryAfterMs = wait;
+    p.remainingTokens = 0;
+    p.resetAt = Math.max(p.resetAt, Date.now() + wait);
+  }
+  throw err;
+}
+
 export async function chatCompletion({ endpoints, messages, tools, toolChoice, temperature = 0.6 }) {
   const maxTokens = 600;
-  const body = { model: null, messages, temperature, max_tokens: maxTokens };
+  const body = { messages, temperature, max_tokens: maxTokens };
   if (tools?.length) {
     body.tools = tools;
     body.tool_choice = toolChoice || 'auto';
@@ -221,61 +322,63 @@ export async function chatCompletion({ endpoints, messages, tools, toolChoice, t
   const estimate = estimateTokens(messages, tools, maxTokens);
 
   const run = async () => {
-    const tried = new Set();
     let lastError = null;
 
-    // Try every key once. A key that is out of budget makes us try the next one
-    // immediately; only when all of them are out do we wait for the nearest window.
-    for (let attempt = 0; attempt < endpoints.length + 2; attempt++) {
-      const endpoint = pickEndpoint(endpoints, estimate);
-      const p = paceFor(endpoint);
-      const wait = p.resetAt - Date.now();
-      if (p.remainingTokens !== null && p.remainingTokens < estimate && wait > 0 && tried.has(endpoint.id)) {
-        // Everything is exhausted; wait for the soonest window to reopen.
-        const soonest = Math.min(...endpoints.map((e) => Math.max(paceFor(e).resetAt - Date.now(), 0)));
-        const sleep = Math.min(soonest + 1000, 65000);
-        if (sleep > 1500) logWait(sleep);
-        await new Promise((r) => setTimeout(r, sleep));
+    // Walk the endpoints in order of how soon they can answer. If one is limited,
+    // move straight to the next; only when none can answer do we wait for the
+    // soonest limit to lift, then try again. This keeps a customer's reply flowing
+    // across free tiers instead of failing the moment one key runs dry.
+    for (let round = 0; round < 3; round++) {
+      const order = [...endpoints].sort((a, b) => {
+        const pa = paceFor(a);
+        const pb = paceFor(b);
+        const wa = pa.remainingTokens === null ? 0 : Math.max(pa.resetAt - Date.now(), 0);
+        const wb = pb.remainingTokens === null ? 0 : Math.max(pb.resetAt - Date.now(), 0);
+        return wa - wb;
+      });
+
+      let sawLimit = false;
+      for (const endpoint of order) {
+        const p = paceFor(endpoint);
+        const wait = p.remainingTokens === null ? 0 : Math.max(p.resetAt - Date.now(), 0);
+        if (wait > 0) {
+          sawLimit = true;
+          continue;
+        }
+        // A keyless provider is shared by everyone, so space its requests out.
+        if (endpoint.keyless && p.lastCallAt && Date.now() - p.lastCallAt < KEYLESS_MIN_GAP_MS) {
+          sawLimit = true;
+          continue;
+        }
+        try {
+          return await requestEndpoint(endpoint, body);
+        } catch (e) {
+          lastError = e;
+          if (e.rateLimited) {
+            sawLimit = true;
+            continue;
+          }
+          // A rejected key, unknown model or a network fault should not take the
+          // agent offline while another endpoint is still available.
+          continue;
+        }
       }
 
-      tried.add(endpoint.id);
-      let res;
-      let text;
-      try {
-        ({ res, text } = await callEndpoint(endpoint, { ...body, model: endpoint.model }));
-      } catch (e) {
-        // A network or timeout problem with one provider should not take the agent
-        // down; move on to the next key.
-        lastError = new Error(`Could not reach the AI provider: ${e.message}`);
-        continue;
-      }
-      noteLimits(p, res);
+      if (!sawLimit) break;
 
-      let data;
-      try {
-        data = JSON.parse(text);
-      } catch {
-        throw new Error(`LLM returned non-JSON response (${res.status}): ${text.slice(0, 200)}`);
-      }
-
-      if (res.ok) {
-        const choice = data.choices?.[0]?.message;
-        if (!choice) throw new Error('LLM returned no choices.');
-        return choice;
-      }
-
-      const msg = data?.error?.message || data?.message || text.slice(0, 300);
-      if (res.status === 429) {
-        // Mark this key as spent so the next attempt prefers another one.
-        p.remainingTokens = 0;
-        const wait2 = rateLimitWait(res, p);
-        if (!p.resetAt || p.resetAt < Date.now()) p.resetAt = Date.now() + wait2;
-        lastError = new Error('The AI provider is rate limiting us right now.');
-        lastError.rateLimited = true;
-        lastError.retryAfterMs = wait2;
-        continue;
-      }
-      throw new Error(`LLM error ${res.status}: ${msg}`);
+      // Wait until the nearest endpoint can answer again: either its rate-limit
+      // window lifts, or a keyless provider's minimum gap has passed.
+      const readyAt = (e) => {
+        const p = paceFor(e);
+        const times = [];
+        if (p.remainingTokens !== null && p.resetAt > Date.now()) times.push(p.resetAt);
+        if (e.keyless && p.lastCallAt) times.push(p.lastCallAt + KEYLESS_MIN_GAP_MS);
+        return times.length ? Math.max(...times) : Date.now();
+      };
+      const soonest = Math.min(...endpoints.map((e) => readyAt(e) - Date.now()));
+      const sleep = Math.max(Math.min(soonest + 1000, 65000), 2000);
+      logWait(sleep);
+      await new Promise((r) => setTimeout(r, sleep));
     }
 
     throw lastError || new Error('All configured AI keys are unavailable right now.');
@@ -290,9 +393,11 @@ export async function chatCompletion({ endpoints, messages, tools, toolChoice, t
 
 // Groq reports the wait in the retry-after header, and otherwise quotes a number
 // of seconds inside the message ("Please try again in 6.1s").
-function rateLimitWait(res, p) {
+function rateLimitWait(res, p, msg) {
   const header = Number(res.headers.get('retry-after'));
   if (Number.isFinite(header) && header > 0) return Math.min(header * 1000 + 500, 65000);
+  const fromMsg = parseRetryFromMessage(msg);
+  if (fromMsg > 0) return Math.min(fromMsg + 1000, 65000);
   const wait = (p?.resetAt || 0) - Date.now();
   if (wait > 0) return Math.min(wait + 1000, 65000);
   return 20000;

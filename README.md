@@ -6,6 +6,9 @@ that answers your incoming WhatsApp messages.
 ## What it does
 
 - Links WhatsApp by QR code or by an 8-character pairing code (phone number entry).
+- Works with no setup at all: if no key is set it uses Pollinations, a free service
+  that needs no signup. It stays in the queue as a backstop even when you add keys, so
+  an expired or exhausted key never leaves the agent silent.
 - Answers direct messages with an LLM of your choice (Google Gemini, Groq, OpenAI,
   OpenRouter, Together, DeepSeek, or any OpenAI-compatible endpoint). The provider is
   filled in automatically from the API key, so a pasted key works even if the dropdown
