@@ -10,9 +10,26 @@ that answers your incoming WhatsApp messages.
   Together, DeepSeek, or any OpenAI-compatible endpoint). The provider is filled in
   automatically from the API key, so a pasted key works even if the dropdown was left
   on Custom.
-- Gives the agent two tools: `web_search` (Wikipedia + DuckDuckGo instant answers)
-  and `current_time`.
+- Gives the agent tools: `web_search`, `current_time`, and `save_lead` (records a
+  customer's details once they are qualified).
 - Keeps short per-chat memory and shows a live activity log.
+- Trained on the TECH ARSLAN business brief (products, prices, FAQs, sales style)
+  held in `knowledge.js`, editable from the Business knowledge box in the web app.
+- Qualifies customers and saves their details to a Customer leads panel.
+
+## Training the agent on your business
+
+The agent's knowledge lives in `knowledge.js`. It is appended to the system prompt
+on every reply, so it always knows:
+
+- who the company is and who to contact
+- all eight products with prices and features
+- answers to the common questions
+- how to talk to customers and when to hand over to a human
+
+To change any of it, edit the Business knowledge box in the web app and press
+Save settings, or edit `knowledge.js` directly. No restart is needed for the
+web app path.
 
 ## Run
 
