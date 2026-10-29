@@ -10,12 +10,16 @@ that answers your incoming WhatsApp messages.
   Together, DeepSeek, or any OpenAI-compatible endpoint). The provider is filled in
   automatically from the API key, so a pasted key works even if the dropdown was left
   on Custom.
-- Gives the agent tools: `web_search`, `current_time`, and `save_lead` (records a
-  customer's details once they are qualified).
+- Gives the agent tools: `web_search`, `current_time`, `remember_customer`
+  (builds a profile per chat) and `alert_owner` / `save_lead` (hands a qualified
+  customer to the owner).
+- Remembers each customer across conversations, so it never asks twice.
+- DMs the owner's WhatsApp for every qualified customer. Set the number in the
+  "Your WhatsApp number for lead alerts" field and use Send test alert to check.
 - Keeps short per-chat memory and shows a live activity log.
 - Trained on the TECH ARSLAN business brief (products, prices, FAQs, sales style)
   held in `knowledge.js`, editable from the Business knowledge box in the web app.
-- Qualifies customers and saves their details to a Customer leads panel.
+- Qualifies customers and saves their details to the Customer panel.
 
 ## Training the agent on your business
 
